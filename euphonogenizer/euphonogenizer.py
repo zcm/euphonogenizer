@@ -98,18 +98,21 @@ class TitleFormattingParser:
   def __init__(self, debug=False):
     self.debug = debug
 
-  def parse(self, track_listing, title_format, conditional=False):
+  def parse(self, track, title_format, conditional=False):
     lookbehind = None
     outputting = True
     literal = False
     literal_chars_count = None
     parsing_variable = False
     parsing_function = False
+    parsing_function_args = False
     parsing_conditional = False
     subconditional_parse_count = 0
     evaluation_count = 0
     output = ''
     current = ''
+    current_fn = ''
+    current_argv = []
 
     if self.debug:
       print('fresh call to parse() - format is "%s"' % title_format)
@@ -117,17 +120,10 @@ class TitleFormattingParser:
     for i, c in enumerate(title_format):
       if outputting:
         if literal:
-          if c == "'":
-            if lookbehind == "'" and literal_chars_count == 0:
-              if self.debug:
-                print('output of single quote due to lookbehind at char %s' % i)
-              output += c
-            if self.debug:
-              print('leaving literal mode at char %s' % i)
-            literal = False
-          else:
-            output += c
-            literal_chars_count += 1
+          next_output, literal, chars_parsed = self.parse_literal(
+              c, i, lookbehind, literal_chars_count, False)
+          output += next_output
+          literal_chars_count += chars_parsed
         else:
           if c == "'":
             if self.debug:
@@ -160,14 +156,14 @@ class TitleFormattingParser:
           else:
             output += c
       else:
-        if literal:
+        if literal and not parsing_function_args:
           raise 'Invalid parse state: Cannot parse names while in literal mode'
 
         if parsing_variable:
           if c == '%':
             if self.debug:
               print('finished parsing variable %s at char %s' % (current, i))
-            evaluated_value = track_listing.get(current)
+            evaluated_value = track.get(current)
 
             if self.debug:
               print('value is: %s' % evaluated_value)
@@ -183,8 +179,62 @@ class TitleFormattingParser:
           else:
             current += c
         elif parsing_function:
-          # Just don't do this yet. Raise something so I know to come back...
-          raise "Parsing of functions isn't implemented yet."
+          if c == '(':
+            if current == '':
+              raise ("Can't call function with no name at char %s" % i)
+            if self.debug:
+              print('finished parsing function %s at char %s' % (current, i))
+
+            current_fn = current
+            current = ''
+            parsing_function = False
+            parsing_function_args = True
+          elif c == ')':
+            raise ('Encountered close paren before open paren at char %s' % i)
+          elif not c.isalnum():
+            raise ("Illegal token '%s' encountered at char %s" % (c, i))
+          else:
+            current += c
+        elif parsing_function_args:
+          if literal:
+            next_current, literal, chars_parsed = self.parse_literal(
+                c, i, lookbehind, literal_chars_count, True)
+            current += next_current
+            literal_chars_count += chars_parsed
+          else:
+            if c == ')':
+              current, arg = self.parse_fn_arg(
+                  track, current_fn, current, current_argv, c, i)
+              current_argv.append(arg)
+
+              if self.debug:
+                print('finished parsing function arglist at char %s' % i)
+              fn_result = self.invoke_function(current_fn, current_argv)
+              if self.debug:
+                print('finished invoking function %s, value: %s' % (
+                    current_fn, fn_result))
+              if fn_result:
+                output += fn_result
+                evaluation_count += 1
+              if self.debug:
+                print('evaluation count is now %s' % evaluation_count)
+
+              current_argv = []
+              outputting = True
+              parsing_function_args = False
+            elif c == "'":
+              if self.debug:
+                print('entering arglist literal mode at char %s' % i)
+              literal = True
+              literal_chars_count = 0
+              # Include the quotes because we reparse function arguments.
+              current += c
+            elif c == ',':
+              current, arg = self.parse_fn_arg(
+                  track, current_fn, current, current_argv, c, i)
+              current_argv.append(arg)
+            else:
+              current += c
         elif parsing_conditional:
           if c == '[':
             if self.debug:
@@ -200,7 +250,7 @@ class TitleFormattingParser:
             else:
               if self.debug:
                 print('finished parsing conditional at char %s' % i)
-              evaluated_value = self.parse(track_listing, current, True)
+              evaluated_value = self.parse(track, current, True)
 
               if self.debug:
                 print('value is: %s' % evaluated_value)
@@ -241,6 +291,42 @@ class TitleFormattingParser:
       return ''
 
     return output
+
+  def parse_literal(self, c, i, lookbehind, literal_chars_count, include_quote):
+    next_output = ''
+    next_literal_state = True
+    literal_chars_parsed = 0
+
+    if c == "'":
+      if lookbehind == "'" and literal_chars_count == 0:
+        if self.debug:
+          print('output of single quote due to lookbehind at char %s' % i)
+        next_output += c
+      elif include_quote:
+        next_output += c
+      if self.debug:
+        print('leaving literal mode at char %s' % i)
+      next_literal_state = False
+    else:
+      next_output += c
+      literal_chars_parsed += 1
+
+    return (next_output, next_literal_state, literal_chars_parsed)
+
+  def parse_fn_arg(self, track, current_fn, current, current_argv, c, i):
+    next_current = ''
+
+    if self.debug:
+      print('finished argument %s for function "%s" at char %s' % (
+          len(current_argv), current_fn, i))
+    # Now recursively subparse the argument.
+    subparsed_argument = self.parse(track, current, False)
+    return (next_current, subparsed_argument)
+
+  def invoke_function(self, function_name, function_argv):
+    if self.debug:
+      print('invoking function %s, args %s' % (function_name, function_argv))
+    # TODO(dremelofdeath): Now invoke the function.
 
 
 class TrackListing:
