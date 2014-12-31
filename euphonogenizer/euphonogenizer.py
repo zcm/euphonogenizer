@@ -28,6 +28,18 @@ parser.add_argument('--pattern',
     help = 'the pattern used for output filenames in transformations',
 )
 
+parser.add_argument('--case-sensitive',
+    action = 'store_true',
+    dest = 'case_sensitive',
+    help = 'force variable resolution to be case-sensitive (default is false)',
+)
+parser.add_argument('--no-case-sensitive',
+    action = 'store_false',
+    dest = 'case_sensitive',
+    help = 'force variable resolution to be case-insensitive (the default)',
+)
+parser.set_defaults(case_sensitive=False)
+
 parser.add_argument('--coversearchpatterns',
     default = [
       '../override.png',
@@ -95,7 +107,8 @@ args = parser.parse_args()
 
 
 class TitleFormattingParser:
-  def __init__(self, debug=False):
+  def __init__(self, case_sensitive=False, debug=False):
+    self.case_sensitive = case_sensitive
     self.debug = debug
 
   def parse(self, track, title_format, conditional=False):
@@ -161,6 +174,9 @@ class TitleFormattingParser:
 
         if parsing_variable:
           if c == '%':
+            if not self.case_sensitive:
+              current = current.upper()
+
             if self.debug:
               print('finished parsing variable %s at char %s' % (current, i))
             evaluated_value = track.get(current)
@@ -389,7 +405,7 @@ class TagsFile:
 
 
 # TODO(dremelofdeath): Make this whole block a single class.
-titleparser = TitleFormattingParser()
+titleparser = TitleFormattingParser(args.case_sensitive)
 
 
 def handle_track(track, printtrack):
