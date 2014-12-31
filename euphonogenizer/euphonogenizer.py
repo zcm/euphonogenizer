@@ -11,7 +11,7 @@ from common import dbg
 
 
 # TODO(dremelofdeath): Make this whole block a single class.
-titleformatter = titleformat.TitleFormatter(args.case_sensitive)
+titleformatter = titleformat.TitleFormatter(args.case_sensitive, args.magic)
 
 
 def handle_track(track, printtrack):

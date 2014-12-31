@@ -37,6 +37,18 @@ parser.add_argument('--no-case-sensitive',
 )
 parser.set_defaults(case_sensitive=False)
 
+parser.add_argument('--magic',
+    action = 'store_true',
+    dest = 'magic',
+    help = 'allow variable resolution to search multiple fields (the default)',
+)
+parser.add_argument('--no-magic',
+    action = 'store_false',
+    dest = 'magic',
+    help = 'forbid magical variable resolution (default is allow)',
+)
+parser.set_defaults(magic=True)
+
 parser.add_argument('--coversearchpatterns',
     default = [
       '../override.png',
@@ -101,4 +113,3 @@ parser.add_argument('--coversearchpatterns',
 )
 
 args = parser.parse_args()
-

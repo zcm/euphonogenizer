@@ -1,13 +1,45 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+# TODO(dremelofdeath): Actually finish these mapping functions.
+def magic_map_filename(track):
+  pass
+
+def magic_map_filename_ext(track):
+  pass
+
+def magic_map_track_artist(track):
+  pass
+
+def magic_map_tracknumber(track):
+  return track.get('TRACKNUMBER').zfill(2)
+
+def magic_map_track_number(track):
+  return str(int(track.get('TRACKNUMBER')))
+
+
+magic_mappings = {
+    'album artist': ['ALBUM ARTIST', 'ARTIST', 'COMPOSER', 'PERFORMER'],
+    'album': ['ALBUM', 'VENUE'],
+    'artist': ['ARTIST', 'ALBUM ARTIST', 'COMPOSER', 'PERFORMER'],
+    'discnumber': ['DISCNUMBER', 'DISC'],
+    'filename': magic_map_filename,
+    'filename_ext': magic_map_filename_ext,
+    'track artist': magic_map_track_artist,
+    'title': ['TITLE', '@'],
+    'tracknumber': magic_map_tracknumber,
+    'track number': magic_map_track_number,
+}
+
+
 class TitleFormatParseException(Exception):
   pass
 
 
 class TitleFormatter:
-  def __init__(self, case_sensitive=False, debug=False):
+  def __init__(self, case_sensitive=False, magic=True, debug=False):
     self.case_sensitive = case_sensitive
+    self.magic = magic
     self.debug = debug
 
   def format(self, track, title_format, conditional=False, depth=0, offset=0):
@@ -84,12 +116,7 @@ class TitleFormatter:
 
         if parsing_variable:
           if c == '%':
-            if not self.case_sensitive:
-              current = current.upper()
-
-            if self.debug:
-              dbg('parsed variable %s at char %s' % (current, i), depth)
-            evaluated_value = track.get(current)
+            evaluated_value = self.resolve_variable(track, current, depth)
 
             if self.debug:
               dbg('value is: %s' % evaluated_value, depth)
@@ -293,10 +320,42 @@ class TitleFormatter:
     subparsed_argument = self.format(track, current, False, depth + 1, offset)
     return (next_current, subparsed_argument)
 
+  def resolve_variable(self, track, field, depth):
+    local_field = field
+    if not self.case_sensitive:
+      local_field = field.upper()
+    if self.debug:
+      dbg('parsed variable %s at char %s' % (local_field, i), depth)
+    if not self.magic:
+      return track.get(local_field)
+    else:
+      field_lower = local_field.lower()
+      if field_lower in magic_mappings:
+        mapping = magic_mappings[field_lower]
+        if not mapping:
+          return track.get(local_field)
+        else:
+          # First try to call it -- the mapping can be a function.
+          try:
+            return mapping(track)
+          except TypeError:
+            # That didn't work. It's a list.
+            for each in mapping:
+              if each in track:
+                return track.get(each)
+              if self.case_sensitive:
+                each_lower = each.lower()
+                if each_lower in track:
+                  return track.get(each_lower)
+
+            # Still couldn't find it.
+            return track.get(local_field)
+      else:
+        return track.get(local_field)
+
   def invoke_function(self, function_name, function_argv, depth=0, offset=0):
     if self.debug:
       dbg('invoking function %s, args %s' % (
           function_name, function_argv), depth)
     # TODO(dremelofdeath): Now invoke the function.
-
 
