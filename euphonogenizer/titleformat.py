@@ -62,6 +62,12 @@ def __foo_va_conv_n(n):
         pass
   return 0
 
+def __foo_va_conv_n_lazy(n):
+  return __foo_va_conv_n(n.eval())
+
+def __foo_va_lazy(x):
+  return x.eval()
+
 def foo_false(track, va):
   pass
 
@@ -77,57 +83,57 @@ def foo_nop(track, va):
 # TODO(dremelofdeath): Implement all these functions.
 # TODO(dremelofdeath): These need some form of lazy-evaluation.
 def foo_if_arity2(track, va_cond_then):
-  if va_cond_then[0]:
-    return va_cond_then[1]
+  if va_cond_then[0].eval():
+    return va_cond_then[1].eval()
 
 def foo_if_arity3(track, va_cond_then_else):
-  if va_cond_then_else[0]:
-    return va_cond_then_else[1]
-  return va_cond_then_else[2]
+  if va_cond_then_else[0].eval():
+    return va_cond_then_else[1].eval()
+  return va_cond_then_else[2].eval()
 
 def foo_if2(track, va_a_else):
-  return va_a_else[0] if va_a_else[0] else va_a_else[1]
+  return va_a_else[0].eval() if va_a_else[0].eval() else va_a_else[1].eval()
 
 def foo_if3(track, va_a1_a2_aN_else):
   for i in range(0, len(va_a1_a2_aN_else) - 1):
-    if va_a1_a2_aN_else[i]:
-      return va_a1_a2_aN_else[i]
-  return va_a1_a2_aN_else[-1]
+    if va_a1_a2_aN_else[i].eval():
+      return va_a1_a2_aN_else[i].eval()
+  return va_a1_a2_aN_else[-1].eval()
 
 def foo_ifequal(track, va_n1_n2_then_else):
-  n1 = __foo_va_conv_n(va_n1_n2_then_else[0])
-  n2 = __foo_va_conv_n(va_n1_n2_then_else[1])
+  n1 = __foo_va_conv_n_lazy(va_n1_n2_then_else[0])
+  n2 = __foo_va_conv_n_lazy(va_n1_n2_then_else[1])
   if n1 == n2:
-    return va_n1_n2_then_else[2]
-  return va_n1_n2_then_else[3]
+    return va_n1_n2_then_else[2].eval()
+  return va_n1_n2_then_else[3].eval()
 
 def foo_ifgreater(track, va_n1_n2_then_else):
-  n1 = __foo_va_conv_n(va_n1_n2_then_else[0])
-  n2 = __foo_va_conv_n(va_n1_n2_then_else[1])
+  n1 = __foo_va_conv_n_lazy(va_n1_n2_then_else[0])
+  n2 = __foo_va_conv_n_lazy(va_n1_n2_then_else[1])
   if n1 > n2:
-    return va_n1_n2_then_else[2]
-  return va_n1_n2_then_else[3]
+    return va_n1_n2_then_else[2].eval()
+  return va_n1_n2_then_else[3].eval()
 
 def foo_iflonger(track, va_s_n_then_else):
-  n = __foo_va_conv_n(va_s_n_then_else[1])
-  if len(va_s_n_then_else[0]) > n:
-    return va_s_n_then_else[2]
-  return va_n1_n2_then_else[3]
+  n = __foo_va_conv_n_lazy(va_s_n_then_else[1])
+  if len(va_s_n_then_else[0].eval()) > n:
+    return va_s_n_then_else[2].eval()
+  return va_n1_n2_then_else[3].eval()
 
 def foo_select(track, va_n_a1_aN):
-  n = __foo_va_conv_n(va_n_a1_aN[0])
+  n = __foo_va_conv_n_lazy(va_n_a1_aN[0])
   if n > 0 and n <= len(va_n_a1_aN) - 1:
-    return va_n_a1_aN[n]
+    return va_n_a1_aN[n].eval()
 
 def foo_add(track, va_aN):
-  return sum(map(__foo_va_conv_n, va_aN))
+  return sum(map(__foo_va_conv_n_lazy, va_aN))
 
 def foo_div(track, va_aN):
-  return reduce(lambda x, y: x // y, map(__foo_va_conv_n, va_aN))
+  return reduce(lambda x, y: x // y, map(__foo_va_conv_n_lazy, va_aN))
 
 def foo_greater(track, va_a_b):
-  a = __foo_va_conv_n(va_a_b[0])
-  b = __foo_va_conv_n(va_a_b[1])
+  a = __foo_va_conv_n_lazy(va_a_b[0])
+  b = __foo_va_conv_n_lazy(va_a_b[1])
   if a > b:
     return True
   return False
@@ -145,21 +151,21 @@ def foo_minN(track, va_aN):
   return reduce(lambda x, y: foo_min(track, [x, y]), va_aN)
 
 def foo_mod(track, va_a_b):
-  a = __foo_va_conv_n(va_a_b[0])
-  b = __foo_va_conv_n(va_a_b[1])
+  a = __foo_va_conv_n_lazy(va_a_b[0])
+  b = __foo_va_conv_n_lazy(va_a_b[1])
   if not b:
     return a
   return a % b
 
 def foo_modN(track, va_aN):
   return reduce(
-      lambda x, y: foo_mod(track, [x, y]), map(__foo_va_conv_n, va_aN))
+      lambda x, y: foo_mod(track, [x, y]), map(__foo_va_conv_n_lazy, va_aN))
 
 def foo_mul(track, va_aN):
   return reduce(lambda x, y: x * y, va_aN)
 
 def foo_muldiv(track, va_a_b_c):
-  c = __foo_va_conv_n(va_a_b_c[2])
+  c = __foo_va_conv_n_lazy(va_a_b_c[2])
   return (foo_mul(track, [a, b]) + c // 2) // c
 
 def foo_rand(track, va):
@@ -167,7 +173,7 @@ def foo_rand(track, va):
   return random.randint(0, sys.maxint)
 
 def foo_sub(track, va_aN):
-  return reduce(lambda x, y: x - y, map(__foo_va_conv_n, va_aN))
+  return reduce(lambda x, y: x - y, map(__foo_va_conv_n_lazy, va_aN))
 
 def foo_and(track, va_N):
   pass
@@ -478,7 +484,7 @@ class FunctionVirtualInvocationException(Exception):
 
 
 def vmarshal(value):
-  if not value and value is not 0:
+  if value is True or (not value and value is not 0):
     return ''
   return str(value)
 
@@ -495,6 +501,31 @@ def vinvoke(track, function, argv):
           function, arity)
       raise FunctionVirtualInvocationException(message)
   return vmarshal(funcref(track, argv))
+
+
+class LazyExpression:
+  def __init__(self, formatter, track, current, conditional, depth, offset):
+    self.formatter = formatter
+    self.track = track
+    self.current = current
+    self.conditional = conditional
+    self.depth = depth
+    self.offset = offset
+    self.value = None
+    self.evaluated = False
+
+  def eval(self):
+    if not self.evaluated:
+      self.value = self.formatter.format(
+          self.track, self.current, self.conditional, self.depth, self.offset)
+      self.evaluated = True
+    return self.value
+
+  def __str__(self):
+    return self.current
+
+  def __repr__(self):
+    return "lazy('%s')" % self.current
 
 
 class TitleFormatParseException(Exception):
@@ -782,9 +813,9 @@ class TitleFormatter:
     if self.debug:
       dbg('finished argument %s for function "%s" at char %s' % (
           len(current_argv), current_fn, i), depth)
-    # Now recursively subparse the argument.
-    subparsed_argument = self.format(track, current, False, depth + 1, offset)
-    return (next_current, subparsed_argument)
+    # The lazy expression will parse the current buffer if it's ever needed.
+    lazy = LazyExpression(self, track, current, False, depth + 1, offset)
+    return (next_current, lazy)
 
   def resolve_variable(self, track, field, i, depth):
     local_field = field
