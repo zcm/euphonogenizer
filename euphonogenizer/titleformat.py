@@ -546,19 +546,22 @@ class TitleFormatter:
     parsing_variable = False
     parsing_function = False
     parsing_function_args = False
+    parsing_function_recursive = False
     parsing_conditional = False
     offset_start = 0
     fn_offset_start = 0
     bad_var_char = None
     conditional_parse_count = 0
     evaluation_count = 0
+    recursive_lparen_count = 0
+    recursive_rparen_count = 0
     output = ''
     current = ''
     current_fn = ''
     current_argv = []
 
     if self.debug:
-      dbg('fresh call to parse(); format="%s" offset=%s' % (
+      dbg('fresh call to format(); format="%s" offset=%s' % (
         title_format, offset), depth)
 
     for i, c in enumerate(title_format):
@@ -656,48 +659,71 @@ class TitleFormatter:
           else:
             current += c
         elif parsing_function_args:
-          if literal:
-            next_current, literal, chars_parsed = self.parse_literal(
-                c, i, lookbehind, literal_chars_count, True, depth, offset + i)
-            current += next_current
-            literal_chars_count += chars_parsed
-          else:
-            if c == ')':
-              current, arg = self.parse_fn_arg(track, current_fn, current,
-                  current_argv, c, i, depth, offset + offset_start)
-              current_argv.append(arg)
-
-              if self.debug:
-                dbg('finished parsing function arglist at char %s' % i, depth)
-              fn_result = self.invoke_function(
-                  track, current_fn, current_argv,
-                  depth, offset + fn_offset_start)
-              if self.debug:
-                dbg('finished invoking function %s, value: %s' % (
-                    current_fn, fn_result), depth)
-              if fn_result:
-                output += fn_result
-                evaluation_count += 1
-              if self.debug:
-                dbg('evaluation count is now %s' % evaluation_count, depth)
-
-              current_argv = []
-              outputting = True
-              parsing_function_args = False
-            elif c == "'":
-              if self.debug:
-                dbg('entering arglist literal mode at char %s' % i, depth)
-              literal = True
-              literal_chars_count = 0
-              # Include the quotes because we reparse function arguments.
-              current += c
-            elif c == ',':
-              current, arg = self.parse_fn_arg(track, current_fn, current,
-                  current_argv, c, i, depth, offset + offset_start)
-              current_argv.append(arg)
-              offset_start = i + 1
+          if not parsing_function_recursive:
+            if literal:
+              next_current, literal, chars_parsed = self.parse_literal(
+                  c, i, lookbehind, literal_chars_count, True, depth, offset + i)
+              current += next_current
+              literal_chars_count += chars_parsed
             else:
-              current += c
+              if c == ')':
+                current, arg = self.parse_fn_arg(track, current_fn, current,
+                    current_argv, c, i, depth, offset + offset_start)
+                current_argv.append(arg)
+
+                if self.debug:
+                  dbg('finished parsing function arglist at char %s' % i, depth)
+                fn_result = self.invoke_function(
+                    track, current_fn, current_argv,
+                    depth, offset + fn_offset_start)
+                if self.debug:
+                  dbg('finished invoking function %s, value: %s' % (
+                      current_fn, fn_result), depth)
+                if fn_result:
+                  output += fn_result
+                  evaluation_count += 1
+                if self.debug:
+                  dbg('evaluation count is now %s' % evaluation_count, depth)
+
+                current_argv = []
+                outputting = True
+                parsing_function_args = False
+              elif c == "'":
+                if self.debug:
+                  dbg('entering arglist literal mode at char %s' % i, depth)
+                literal = True
+                literal_chars_count = 0
+                # Include the quotes because we reparse function arguments.
+                current += c
+              elif c == ',':
+                current, arg = self.parse_fn_arg(track, current_fn, current,
+                    current_argv, c, i, depth, offset + offset_start)
+                current_argv.append(arg)
+                offset_start = i + 1
+              elif c == '$':
+                if self.debug:
+                  dbg('stopped evaluation for function in arg at char %s' % i,
+                      depth)
+                current += c
+                parsing_function_recursive = True
+                recursive_lparen_count = 0
+                recursive_rparen_count = 0
+              else:
+                current += c
+          else: # parsing_function_recursive
+            current += c
+            if c == '(':
+              recursive_lparen_count += 1
+            elif c == ')':
+              recursive_rparen_count += 1
+              if recursive_lparen_count == recursive_rparen_count:
+                # Stop skipping evaluation.
+                if self.debug:
+                  dbg('resumed evaluation at char %s' % i, depth)
+                parsing_function_recursive = False
+              elif recursive_lparen_count < recursive_rparen_count:
+                message = self.make_backwards_error(')', '(', offset, i)
+                raise TitleFormatParseException(message)
         elif parsing_conditional:
           if c == '[':
             if self.debug:
