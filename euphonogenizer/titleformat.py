@@ -77,8 +77,8 @@ def __foo_va_conv_n(n):
 def __foo_va_conv_n_lazy(n):
   value = n.eval()
 
-  if value:
-    return __foo_va_conv_n(value)
+  if value.string_value:
+    return __foo_va_conv_n(value.string_value)
   return 0
 
 def __foo_va_lazy(x):
