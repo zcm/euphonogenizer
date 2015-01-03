@@ -41,6 +41,19 @@ magic_mappings = {
     'track number': magic_map_track_number,
 }
 
+def __foo_int(n):
+  # Note that this "string value" might actually already be an int, in which
+  # case, this function simply ends up stripping the atom wrapper.
+  try:
+    if n is not None and n != '':
+      return int(n.string_value)
+  except AttributeError:
+    try:
+      return int(n)
+    except ValueError:
+      return 0
+  return 0
+
 def __foo_va_conv_n(n):
   strval = ''
   truth = False
@@ -75,11 +88,16 @@ def __foo_va_conv_n(n):
   return EvaluatorAtom(integer_value, truth)
 
 def __foo_va_conv_n_lazy(n):
-  value = n.eval()
-
-  if value.string_value:
-    return __foo_va_conv_n(value.string_value)
+  try:
+    value = n.eval()
+    if value.string_value:
+      return __foo_va_conv_n(value.string_value)
+  except AttributeError:
+    return n
   return 0
+
+def __foo_va_conv_n_lazy_int(n):
+  return __foo_int(__foo_va_conv_n_lazy(n))
 
 def __foo_va_lazy(x):
   return x.eval()
@@ -120,39 +138,40 @@ def foo_if3(track, va_a1_a2_aN_else):
   return va_a1_a2_aN_else[-1].eval()
 
 def foo_ifequal(track, va_n1_n2_then_else):
-  n1 = __foo_va_conv_n_lazy(va_n1_n2_then_else[0])
-  n2 = __foo_va_conv_n_lazy(va_n1_n2_then_else[1])
+  n1 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[0])
+  n2 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[1])
   if n1 == n2:
     return va_n1_n2_then_else[2].eval()
   return va_n1_n2_then_else[3].eval()
 
 def foo_ifgreater(track, va_n1_n2_then_else):
-  n1 = __foo_va_conv_n_lazy(va_n1_n2_then_else[0])
-  n2 = __foo_va_conv_n_lazy(va_n1_n2_then_else[1])
+  n1 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[0])
+  n2 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[1])
+  dbg('ifgreater: %s > %s' % (repr(n1), repr(n2)))
   if n1 > n2:
     return va_n1_n2_then_else[2].eval()
   return va_n1_n2_then_else[3].eval()
 
 def foo_iflonger(track, va_s_n_then_else):
-  n = __foo_va_conv_n_lazy(va_s_n_then_else[1])
+  n = __foo_va_conv_n_lazy_int(va_s_n_then_else[1])
   if len(va_s_n_then_else[0].eval()) > n:
     return va_s_n_then_else[2].eval()
   return va_n1_n2_then_else[3].eval()
 
 def foo_select(track, va_n_a1_aN):
-  n = __foo_va_conv_n_lazy(va_n_a1_aN[0])
+  n = __foo_va_conv_n_lazy_int(va_n_a1_aN[0])
   if n > 0 and n <= len(va_n_a1_aN) - 1:
     return va_n_a1_aN[n].eval()
 
 def foo_add(track, va_aN):
-  return sum(map(__foo_va_conv_n_lazy, va_aN))
+  return sum(map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_div(track, va_aN):
-  return reduce(lambda x, y: x // y, map(__foo_va_conv_n_lazy, va_aN))
+  return reduce(lambda x, y: x // y, map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_greater(track, va_a_b):
-  a = __foo_va_conv_n_lazy(va_a_b[0])
-  b = __foo_va_conv_n_lazy(va_a_b[1])
+  a = __foo_va_conv_n_lazy_int(va_a_b[0])
+  b = __foo_va_conv_n_lazy_int(va_a_b[1])
   if a > b:
     return True
   return False
@@ -170,29 +189,29 @@ def foo_minN(track, va_aN):
   return reduce(lambda x, y: foo_min(track, [x, y]), va_aN)
 
 def foo_mod(track, va_a_b):
-  a = __foo_va_conv_n_lazy(va_a_b[0])
-  b = __foo_va_conv_n_lazy(va_a_b[1])
+  a = __foo_va_conv_n_lazy_int(va_a_b[0])
+  b = __foo_va_conv_n_lazy_int(va_a_b[1])
   if not b:
     return a
   return a % b
 
 def foo_modN(track, va_aN):
   return reduce(
-      lambda x, y: foo_mod(track, [x, y]), map(__foo_va_conv_n_lazy, va_aN))
+      lambda x, y: foo_mod(track, [x, y]), map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_mul(track, va_aN):
-  return reduce(lambda x, y: x * y, va_aN)
+  return reduce(lambda x, y: x * y, map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_muldiv(track, va_a_b_c):
-  c = __foo_va_conv_n_lazy(va_a_b_c[2])
-  return (foo_mul(track, [a, b]) + c // 2) // c
+  c = __foo_va_conv_n_lazy_int(va_a_b_c[2])
+  return (foo_mul(track, [va_a_b_c[0], va_a_b_c[1]]) + c // 2) // c
 
 def foo_rand(track, va):
   random.seed()
   return random.randint(0, sys.maxint)
 
 def foo_sub(track, va_aN):
-  return reduce(lambda x, y: x - y, map(__foo_va_conv_n_lazy, va_aN))
+  return reduce(lambda x, y: x - y, map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_and(track, va_N):
   pass
@@ -339,10 +358,18 @@ def foo_strstr(track, va_s1_s2):
   pass
 
 def foo_strcmp(track, va_s1_s2):
-  pass
+  s1 = va_s1_s2[0].eval()
+  s2 = va_s1_s2[1].eval()
+  if str(s1) == str(s2):
+    return EvaluatorAtom(1, True)
+  return EvaluatorAtom('', False)
 
 def foo_stricmp(track, va_s1_s2):
-  pass
+  s1 = va_s1_s2[0].eval()
+  s2 = va_s1_s2[1].eval()
+  if str(s1).lower() == str(s2).lower():
+    return EvaluatorAtom(1, True)
+  return EvaluatorAtom('', False)
 
 def foo_substr(track, va_s_m_n):
   pass
