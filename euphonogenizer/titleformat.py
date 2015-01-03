@@ -42,31 +42,50 @@ magic_mappings = {
 }
 
 def __foo_va_conv_n(n):
-  if n:
+  strval = ''
+  truth = False
+
+  integer_value = 0
+
+  try:
+    strval = n.string_value
+    truth = n.truth_value
+  except AttributeError:
+    strval = n
+
+  if strval:
     try:
-      return int(n)
+      integer_value = int(strval)
     except ValueError:
       try:
-        start = 1 if n[0] == '-' else 0
+        start = 1 if strval[0] == '-' else 0
         last_found_number = 0
         try:
-          for i in range(start, len(n)):
-            if int(n[i]) > 0:
+          for i in range(start, len(strval)):
+            if int(strval[i]) > 0:
               last_found_number = i
         except ValueError:
           if last_found_number:
-            return int(n[0:last_found_number+1])
+            integer_value = int(strval[0:last_found_number+1])
       except ValueError:
         pass
       except KeyError:
         pass
-  return 0
+
+  return EvaluatorAtom(integer_value, truth)
 
 def __foo_va_conv_n_lazy(n):
-  return __foo_va_conv_n(n.eval())
+  value = n.eval()
+
+  if value:
+    return __foo_va_conv_n(value)
+  return 0
 
 def __foo_va_lazy(x):
   return x.eval()
+
+def foo_true(track, va):
+  return True
 
 def foo_false(track, va):
   pass
@@ -78,7 +97,7 @@ def foo_one(track, va):
   return '1'
 
 def foo_nop(track, va):
-  return va[0]
+  return va[0].eval()
 
 # TODO(dremelofdeath): Implement all these functions.
 # TODO(dremelofdeath): These need some form of lazy-evaluation.
@@ -414,8 +433,8 @@ foo_function_vtable = {
     'rand': {'0': foo_rand},
     'sub': {'0': foo_false, 'n': foo_sub},
     # TODO(dremelofdeath): This is where I left off...
-    'and': {'n': foo_and},
-    'or': {'n': foo_or},
+    'and': {'0': foo_true, '1': foo_nop, 'n': foo_and},
+    'or': {'0': foo_false, '1': foo_nop, 'n': foo_or},
     'not': {'1': foo_not},
     'xor': {'n': foo_xor},
     'abbr': {'1': foo_abbr_arity1, '2': foo_abbr_arity2},
@@ -484,9 +503,18 @@ class FunctionVirtualInvocationException(Exception):
 
 
 def vmarshal(value):
-  if value is True or (not value and value is not 0):
-    return ''
-  return str(value)
+  if value is None:
+    return None
+
+  string_value = value
+
+  try:
+    string_value = value.string_value
+  except AttributeError:
+    if value is True or value is False:
+      string_value = ''
+
+  return EvaluatorAtom(string_value, True if value else False)
 
 def vinvoke(track, function, argv):
   arity = str(len(argv))
@@ -503,6 +531,24 @@ def vinvoke(track, function, argv):
   return vmarshal(funcref(track, argv))
 
 
+class EvaluatorAtom:
+  def __init__(self, string_value, truth_value):
+    self.string_value = string_value
+    self.truth_value = truth_value
+
+  def __str__(self):
+    return str(self.string_value)
+
+  def __nonzero__(self):
+    return self.truth_value
+
+  def __bool__(self):
+    return self.truth_value
+
+  def __repr__(self):
+    return 'atom(%s, %s)' % (repr(self.string_value), self.truth_value)
+
+
 class LazyExpression:
   def __init__(self, formatter, track, current, conditional, depth, offset):
     self.formatter = formatter
@@ -516,7 +562,7 @@ class LazyExpression:
 
   def eval(self):
     if not self.evaluated:
-      self.value = self.formatter.format(
+      self.value = self.formatter.eval(
           self.track, self.current, self.conditional, self.depth, self.offset)
       self.evaluated = True
     return self.value
@@ -525,7 +571,7 @@ class LazyExpression:
     return self.current
 
   def __repr__(self):
-    return "lazy('%s')" % self.current
+    return "lazy(%s)" % repr(self.current)
 
 
 class TitleFormatParseException(Exception):
@@ -538,11 +584,17 @@ class TitleFormatter:
     self.magic = magic
     self.debug = debug
 
-  def format(self, track, title_format, conditional=False, depth=0, offset=0):
+  def format(self, track, title_format):
+    evaluated_value = self.eval(track, title_format)
+    if evaluated_value is not None:
+      return str(evaluated_value)
+    return None
+
+  def eval(self, track, title_format, conditional=False, depth=0, offset=0):
     lookbehind = None
     outputting = True
     literal = False
-    literal_chars_count = None
+    literal_count = None
     parsing_variable = False
     parsing_function = False
     parsing_function_args = False
@@ -561,22 +613,22 @@ class TitleFormatter:
     current_argv = []
 
     if self.debug:
-      dbg('fresh call to format(); format="%s" offset=%s' % (
+      dbg('fresh call to eval(); format="%s" offset=%s' % (
         title_format, offset), depth)
 
     for i, c in enumerate(title_format):
       if outputting:
         if literal:
           next_output, literal, chars_parsed = self.parse_literal(
-              c, i, lookbehind, literal_chars_count, False, depth, offset + i)
+              c, i, lookbehind, literal_count, False, depth, offset + i)
           output += next_output
-          literal_chars_count += chars_parsed
+          literal_count += chars_parsed
         else:
           if c == "'":
             if self.debug:
               dbg('entering literal mode at char %s' % i, depth)
             literal = True
-            literal_chars_count = 0
+            literal_count = 0
           elif c == '%':
             if self.debug:
               dbg('begin parsing variable at char %s' % i, depth)
@@ -609,18 +661,18 @@ class TitleFormatter:
           else:
             output += c
       else:
-        if literal and not parsing_function_args:
-          raise TitleFormatParseException(
-              'Invalid parse state: Cannot parse names while in literal mode')
-
         if parsing_variable:
+          if literal:
+            raise TitleFormatParseException(
+                'Invalid parse state: Cannot parse names while in literal mode')
           if c == '%':
             evaluated_value = self.resolve_variable(track, current, i, depth)
 
             if self.debug:
               dbg('value is: %s' % evaluated_value, depth)
             if evaluated_value:
-              output += evaluated_value
+              output += str(evaluated_value)
+            if evaluated_value is not None and evaluated_value is not False:
               evaluation_count += 1
             if self.debug:
               dbg('evaluation count is now %s' % evaluation_count, depth)
@@ -638,6 +690,9 @@ class TitleFormatter:
           else:
             current += c
         elif parsing_function:
+          if literal:
+            raise TitleFormatParseException(
+                'Invalid parse state: Cannot parse names while in literal mode')
           if c == '(':
             if current == '':
               raise TitleFormatParseException(
@@ -662,26 +717,34 @@ class TitleFormatter:
           if not parsing_function_recursive:
             if literal:
               next_current, literal, chars_parsed = self.parse_literal(
-                  c, i, lookbehind, literal_chars_count, True, depth, offset + i)
+                  c, i, lookbehind, literal_count, True, depth, offset + i)
               current += next_current
-              literal_chars_count += chars_parsed
+              literal_count += chars_parsed
             else:
               if c == ')':
-                current, arg = self.parse_fn_arg(track, current_fn, current,
-                    current_argv, c, i, depth, offset + offset_start)
-                current_argv.append(arg)
+                if current != '' or len(current_argv) > 0:
+                  current, arg = self.parse_fn_arg(track, current_fn, current,
+                      current_argv, c, i, depth, offset + offset_start)
+                  current_argv.append(arg)
 
                 if self.debug:
                   dbg('finished parsing function arglist at char %s' % i, depth)
+
                 fn_result = self.invoke_function(
                     track, current_fn, current_argv,
                     depth, offset + fn_offset_start)
+
                 if self.debug:
                   dbg('finished invoking function %s, value: %s' % (
-                      current_fn, fn_result), depth)
+                      current_fn, repr(fn_result)), depth)
+
+                if fn_result is not None and fn_result is not False:
+                  str_fn_result = str(fn_result)
+                  if str_fn_result:
+                    output += str_fn_result
                 if fn_result:
-                  output += fn_result
                   evaluation_count += 1
+
                 if self.debug:
                   dbg('evaluation count is now %s' % evaluation_count, depth)
 
@@ -692,7 +755,7 @@ class TitleFormatter:
                 if self.debug:
                   dbg('entering arglist literal mode at char %s' % i, depth)
                 literal = True
-                literal_chars_count = 0
+                literal_count = 0
                 # Include the quotes because we reparse function arguments.
                 current += c
               elif c == ',':
@@ -725,37 +788,55 @@ class TitleFormatter:
                 message = self.make_backwards_error(')', '(', offset, i)
                 raise TitleFormatParseException(message)
         elif parsing_conditional:
-          if c == '[':
-            if self.debug:
-              dbg('found a pending conditional at char %s' % i, depth)
-            conditional_parse_count += 1
+          if literal:
             current += c
-          elif c == ']':
-            if conditional_parse_count > 0:
+            if c == "'":
               if self.debug:
-                dbg('found a terminating conditional at char %s' % i, depth)
-              conditional_parse_count -= 1
-              current += c
-            else:
-              if self.debug:
-                dbg('finished parsing conditional at char %s' % i, depth)
-              evaluated_value = self.format(
-                  track, current, True, depth + 1, offset + offset_start)
-
-              if self.debug:
-                dbg('value is: %s' % evaluated_value, depth)
-              if evaluated_value:
-                output += evaluated_value
-                evaluation_count += 1
-              if self.debug:
-                dbg('evaluation count is now %s' % evaluation_count, depth)
-
-              current = ''
-              conditional_parse_count = 0
-              outputting = True
-              parsing_conditional = False
+                dbg('leaving conditional literal mode at char %s' % i, depth)
+              literal = False
           else:
-            current += c
+            if c == '[':
+              if self.debug:
+                dbg('found a pending conditional at char %s' % i, depth)
+              conditional_parse_count += 1
+              if self.debug:
+                dbg('conditional parse count now %s' % conditional_parse_count,
+                    depth)
+              current += c
+            elif c == ']':
+              if conditional_parse_count > 0:
+                if self.debug:
+                  dbg('found a terminating conditional at char %s' % i, depth)
+                conditional_parse_count -= 1
+                if self.debug:
+                  dbg('conditional parse count now %s at char %s' % (
+                    conditional_parse_count, i), depth)
+                current += c
+              else:
+                if self.debug:
+                  dbg('finished parsing conditional at char %s' % i, depth)
+                evaluated_value = self.eval(
+                    track, current, True, depth + 1, offset + offset_start)
+
+                if self.debug:
+                  dbg('value is: %s' % evaluated_value, depth)
+                if evaluated_value:
+                  output += str(evaluated_value)
+                  evaluation_count += 1
+                if self.debug:
+                  dbg('evaluation count is now %s' % evaluation_count, depth)
+
+                current = ''
+                conditional_parse_count = 0
+                outputting = True
+                parsing_conditional = False
+            elif c == "'":
+              if self.debug:
+                dbg('entering conditional literal mode at char %s' % i, depth)
+              current += c
+              literal = True
+            else:
+              current += c
         else:
           # Whatever is happening is invalid.
           raise TitleFormatParseException(
@@ -790,7 +871,12 @@ class TitleFormatter:
         dbg('about to return nothing for output: %s' % output, depth)
       return None
 
-    return output
+    result = EvaluatorAtom(output, False if evaluation_count == 0 else True)
+
+    if self.debug:
+      dbg('eval() is returning: ' + repr(result), depth)
+
+    return result
 
   def is_valid_var_identifier(self, c):
     return c == ' ' or c == '@' or c == '_' or c == '-' or c.isalnum()
@@ -810,14 +896,14 @@ class TitleFormatter:
 
     return message
 
-  def parse_literal(self, c, i, lookbehind, literal_chars_count, include_quote,
+  def parse_literal(self, c, i, lookbehind, literal_count, include_quote,
       depth=0, offset=0):
     next_output = ''
     next_literal_state = True
     literal_chars_parsed = 0
 
     if c == "'":
-      if lookbehind == "'" and literal_chars_count == 0:
+      if lookbehind == "'" and literal_count == 0:
         if self.debug:
           dbg('output of single quote due to lookbehind at char %s' % i, depth)
         next_output += c
@@ -849,10 +935,18 @@ class TitleFormatter:
       local_field = field.upper()
     if self.debug:
       dbg('parsed variable %s at char %s' % (local_field, i), depth)
+
+    resolved = None
+
     if not self.magic:
-      return track.get(local_field)
+      resolved = track.get(local_field)
     else:
-      return self.magic_resolve_variable(track, local_field, depth)
+      resolved = self.magic_resolve_variable(track, local_field, depth)
+
+    if resolved is None or resolved is False:
+      return None
+
+    return EvaluatorAtom(resolved, True)
 
   def magic_resolve_variable(self, track, field, depth):
     field_lower = field.lower()
