@@ -1026,12 +1026,14 @@ class TitleFormatter:
               return track.get(each)
             if self.case_sensitive:
               each_lower = each.lower()
-              dbg('attempting to map "%s"' % each_lower, depth)
+              if self.debug:
+                dbg('attempting to map "%s"' % each_lower, depth)
               if each_lower in track:
                 return track.get(each_lower)
 
           # Still couldn't find it.
-          dbg('mapping %s failed to map magic variable' % field_lower, depth)
+          if self.debug:
+            dbg('mapping %s failed to map magic variable' % field_lower, depth)
           return track.get(field)
 
     if self.debug:
