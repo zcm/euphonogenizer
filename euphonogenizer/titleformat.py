@@ -41,6 +41,11 @@ magic_mappings = {
     'track number': magic_map_track_number,
 }
 
+def __foo_bool(b):
+  if b:
+    return True
+  return False
+
 def __foo_int(n):
   # Note that this "string value" might actually already be an int, in which
   # case, this function simply ends up stripping the atom wrapper.
@@ -72,13 +77,13 @@ def __foo_va_conv_n(n):
     except ValueError:
       try:
         start = 1 if strval[0] == '-' else 0
-        last_found_number = 0
+        last_found_number = -1
         try:
           for i in range(start, len(strval)):
             if int(strval[i]) > 0:
               last_found_number = i
         except ValueError:
-          if last_found_number:
+          if last_found_number >= 0:
             integer_value = int(strval[0:last_found_number+1])
       except ValueError:
         pass
@@ -95,6 +100,18 @@ def __foo_va_conv_n_lazy(n):
   except AttributeError:
     return n
   return 0
+
+def __foo_va_conv_bool_lazy(b):
+  try:
+    value = b.eval()
+    try:
+      return value.truth_value
+    except AttributeError:
+      return value
+  except AttributeError:
+    if b:
+      return True
+  return False
 
 def __foo_va_conv_n_lazy_int(n):
   return __foo_int(__foo_va_conv_n_lazy(n))
@@ -118,7 +135,6 @@ def foo_nop(track, va):
   return va[0].eval()
 
 # TODO(dremelofdeath): Implement all these functions.
-# TODO(dremelofdeath): These need some form of lazy-evaluation.
 def foo_if_arity2(track, va_cond_then):
   if va_cond_then[0].eval():
     return va_cond_then[1].eval()
@@ -147,7 +163,6 @@ def foo_ifequal(track, va_n1_n2_then_else):
 def foo_ifgreater(track, va_n1_n2_then_else):
   n1 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[0])
   n2 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[1])
-  dbg('ifgreater: %s > %s' % (repr(n1), repr(n2)))
   if n1 > n2:
     return va_n1_n2_then_else[2].eval()
   return va_n1_n2_then_else[3].eval()
@@ -214,16 +229,16 @@ def foo_sub(track, va_aN):
   return reduce(lambda x, y: x - y, map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_and(track, va_N):
-  pass
+  return reduce(lambda x, y: x and y, map(__foo_va_conv_bool_lazy, va_N))
 
 def foo_or(track, va_N):
-  pass
+  return reduce(lambda x, y: x or y, map(__foo_va_conv_bool_lazy, va_N))
 
-def foo_not(track, va_N):
-  pass
+def foo_not(track, va_x):
+  return not __foo_va_conv_bool_lazy(va_x[0])
 
 def foo_xor(track, va_N):
-  pass
+  return reduce(lambda x, y: x ^ y, map(__foo_va_conv_bool_lazy, va_N))
 
 def foo_abbr_arity1(track, va_x):
   pass
@@ -304,7 +319,16 @@ def foo_longest(track, va_a1_aN):
   pass
 
 def foo_num(track, va_n_len):
-  pass
+  n = va_n_len[0].eval()
+  length = va_n_len[1].eval()
+  length_int = __foo_int(__foo_va_conv_n(length))
+  truth = foo_or(track, [n, length])
+  string_value = None
+  if (length_int > 0):
+    string_value = str(__foo_va_conv_n(n)).zfill(length_int)
+  else:
+    string_value = str(__foo_int(__foo_va_conv_n(n)))
+  return EvaluatorAtom(string_value, truth)
 
 def foo_pad_arity2(track, va_x_len):
   pass
@@ -459,11 +483,11 @@ foo_function_vtable = {
     'muldiv': {'3': foo_muldiv},
     'rand': {'0': foo_rand},
     'sub': {'0': foo_false, 'n': foo_sub},
-    # TODO(dremelofdeath): This is where I left off...
     'and': {'0': foo_true, '1': foo_nop, 'n': foo_and},
     'or': {'0': foo_false, '1': foo_nop, 'n': foo_or},
     'not': {'1': foo_not},
-    'xor': {'n': foo_xor},
+    'xor': {'0': foo_false, '1': foo_nop, 'n': foo_xor},
+    # TODO(dremelofdeath): This is where I left off...
     'abbr': {'1': foo_abbr_arity1, '2': foo_abbr_arity2},
     'ansi': {'1': foo_ansi},
     'ascii': {'1': foo_ascii},
@@ -977,6 +1001,8 @@ class TitleFormatter:
 
   def magic_resolve_variable(self, track, field, depth):
     field_lower = field.lower()
+    if self.debug:
+      dbg('checking %s for magic mappings' % field_lower, depth)
     if field_lower in magic_mappings:
       mapping = magic_mappings[field_lower]
       if not mapping:
@@ -985,12 +1011,17 @@ class TitleFormatter:
       else:
         # First try to call it -- the mapping can be a function.
         try:
-          return mapping(self, track)
+          magically_resolved = mapping(self, track)
+          if self.debug:
+            dbg('mapped %s via function mapping' % field_lower, depth)
+          return magically_resolved
         except TypeError:
           # That didn't work. It's a list.
-          dbg('mapping "%s" is not a function' % field_lower, depth)
+          if self.debug:
+            dbg('mapping "%s" is not a function' % field_lower, depth)
           for each in mapping:
-            dbg('attempting to map "%s"' % each, depth)
+            if self.debug:
+              dbg('attempting to map "%s"' % each, depth)
             if each in track:
               return track.get(each)
             if self.case_sensitive:
@@ -1002,7 +1033,9 @@ class TitleFormatter:
           # Still couldn't find it.
           dbg('mapping %s failed to map magic variable' % field_lower, depth)
           return track.get(field)
-    dbg('mapping %s not found in magic variables' % field_lower, depth)
+
+    if self.debug:
+      dbg('mapping %s not found in magic variables' % field_lower, depth)
     return track.get(field)
 
   def invoke_function(
