@@ -229,10 +229,16 @@ def foo_sub(track, va_aN):
   return reduce(lambda x, y: x - y, map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_and(track, va_N):
-  return reduce(lambda x, y: x and y, map(__foo_va_conv_bool_lazy, va_N))
+  for each in va_N:
+    if not __foo_va_conv_bool_lazy(each):
+      return False
+  return True
 
 def foo_or(track, va_N):
-  return reduce(lambda x, y: x or y, map(__foo_va_conv_bool_lazy, va_N))
+  for each in va_N:
+    if __foo_va_conv_bool_lazy(each):
+      return True
+  return False
 
 def foo_not(track, va_x):
   return not __foo_va_conv_bool_lazy(va_x[0])
