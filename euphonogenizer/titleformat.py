@@ -438,23 +438,50 @@ def foo_num(track, va_n_len):
     string_value = unistr(__foo_int(__foo_va_conv_n(n)))
   return EvaluatorAtom(string_value, __foo_bool(n))
 
+def foo_pad_universal(va_x_len_char, right):
+  x = va_x_len_char[0].eval()
+  length = __foo_va_conv_n_lazy_int(va_x_len_char[1])
+  char = va_x_len_char[2]
+
+  try:
+    char = unistr(char.eval())[0]
+  except AttributeError:
+    pass
+
+  if not char:
+    return x
+
+  x_str = unistr(x)
+  x_len = len(x_str)
+
+  if x_len < length:
+    padded = None
+    if not right:
+      padded = x_str + char * (length - x_len)
+    else:
+      padded = char * (length - x_len) + x_str
+    return EvaluatorAtom(padded, __foo_bool(x))
+  return x
+
 def foo_pad_arity2(track, va_x_len):
-  pass
+  return foo_pad_arity3(track, va_x_len + [' '])
 
 def foo_pad_arity3(track, va_x_len_char):
-  pass
+  return foo_pad_universal(va_x_len_char, right=False)
 
 def foo_pad_right_arity2(track, va_x_len):
-  pass
+  return foo_pad_right_arity3(track, va_x_len + [' '])
 
 def foo_pad_right_arity3(track, va_x_len_char):
-  pass
+  return foo_pad_universal(va_x_len_char, right=True)
 
 def foo_padcut(track, va_x_len):
-  pass
+  cut = foo_cut(track, va_x_len)
+  return foo_pad_arity2(track, [cut, va_x_len[1]])
 
 def foo_padcut_right(track, va_x_len):
-  pass
+  cut = foo_cut(track, va_x_len)
+  return foo_pad_right_arity2(track, [cut, va_x_len[1]])
 
 def foo_progress(track, va_pos_range_len_a_b):
   pass
@@ -877,7 +904,7 @@ class TitleFormatter:
           elif c == ')':
             message = self.make_backwards_error(')', '(', offset, i)
             raise TitleFormatParseException(message)
-          elif not c.isalnum():
+          elif not (c == '_' or c.isalnum()):
             raise TitleFormatParseException(
                 "Illegal token '%s' encountered at char %s" % (c, i))
           else:
