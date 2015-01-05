@@ -350,13 +350,32 @@ def foo_fix_eol_arity2(track, va_x_indicator):
   pass
 
 def foo_hex_arity1(track, va_n):
-  pass
+  return foo_hex_arity2(track, [va_n[0], 0])
 
 def foo_hex_arity2(track, va_n_len):
-  pass
+  n = __foo_va_conv_n_lazy_int(va_n_len[0])
+  length = __foo_va_conv_n_lazy_int(va_n_len[1])
+  if length < 0:
+    length = 0
+  value = None
+  if n < 0:
+    value = hex(((abs(n) ^ 0xFFFFFFFF) + 1) & 0xFFFFFFFF)
+  elif n > 2**63-1:
+    value = '0xFFFFFFFF'
+  else:
+    value = hex(n)
+  hex_value = value.split('L')[0][2:]
+  if len(hex_value) > 8:
+    hex_value = hex_value[-8:]
+  return hex_value.upper().zfill(length)
 
 def foo_insert(track, va_a_b_n):
-  pass
+  a = va_a_b_n[0].eval()
+  a_str = unistr(a)
+  b = va_a_b_n[1].eval()
+  b_str = unistr(b)
+  n = __foo_va_conv_n_lazy_int(va_a_b_n[2])
+  return EvaluatorAtom(a_str[0:n] + b_str + a_str[n:], __foo_bool(a))
 
 def foo_left(track, va_a_len):
   a = va_a_len[0].eval()
@@ -388,25 +407,36 @@ def foo_len2(track, va_a):
   return EvaluatorAtom(length, __foo_bool(a))
 
 def foo_longer(track, va_a_b):
-  pass
+  len_a = len(unistr(va_a_b[0].eval()))
+  len_b = len(unistr(va_a_b[1].eval()))
+  print len_a, len_b
+  print repr(len_a > len_b)
+  return len_a > len_b
 
 def foo_lower(track, va_a):
-  pass
+  a = va_a[0].eval()
+  return EvaluatorAtom(unistr(a).lower(), __foo_bool(a))
 
 def foo_longest(track, va_a1_aN):
-  pass
+  longest = None
+  longest_len = -1
+  for each in va_a1_aN:
+    current = each.eval()
+    current_len = len(unistr(current))
+    if current_len > longest_len:
+      longest = current
+      longest_len = current_len
+  return longest
 
 def foo_num(track, va_n_len):
   n = va_n_len[0].eval()
-  length = va_n_len[1].eval()
-  length_int = __foo_int(__foo_va_conv_n(length))
-  truth = foo_or(track, [n, length])
+  length = __foo_va_conv_n_lazy_int(va_n_len[1])
   string_value = None
-  if (length_int > 0):
-    string_value = unistr(__foo_va_conv_n(n)).zfill(length_int)
+  if (length > 0):
+    string_value = unistr(__foo_va_conv_n(n)).zfill(length)
   else:
     string_value = unistr(__foo_int(__foo_va_conv_n(n)))
-  return EvaluatorAtom(string_value, truth)
+  return EvaluatorAtom(string_value, __foo_bool(n))
 
 def foo_pad_arity2(track, va_x_len):
   pass
@@ -587,7 +617,7 @@ foo_function_vtable = {
     'len2': {'1': foo_len2},
     'longer': {'2': foo_longer},
     'lower': {'1': foo_lower},
-    'longest': {'n': foo_longest},
+    'longest': {'0': foo_false, '1': foo_nop, 'n': foo_longest},
     'num': {'2': foo_num},
     'pad': {'2': foo_pad_arity2, '3': foo_pad_arity3},
     'pad_right': {'2': foo_pad_right_arity2, '3': foo_pad_right_arity3},
@@ -644,6 +674,7 @@ def vmarshal(value):
   except AttributeError:
     if value is True or value is False:
       string_value = ''
+      truth_value = value
 
   return EvaluatorAtom(string_value, truth_value)
 
