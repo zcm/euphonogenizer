@@ -3,26 +3,36 @@
 
 import argparse
 
+desc = '''
+Manages music libraries with metadata in M-TAGS format.
+Written by Zachary Murray (dremelofdeath). Loved by you, I hope.
+'''
 
-parser = argparse.ArgumentParser(
-    description = 'Manages music libraries with metadata in M-TAGS format.',
-    epilog = 'Written by Zachary Murray (dremelofdeath). Loved by you, I hope.',
+parser = argparse.ArgumentParser(prog='euphonogenizer', description=desc)
+
+cmd_parser = parser.add_subparsers(title='Supported operations', dest='cmd')
+
+copy_cmd_parser = cmd_parser.add_parser('copy',
+    help = 'copy all referenced files found in metadata',
 )
 
-parser.add_argument('--mode',
-    choices = ['copy', 'move', 'rename'],
-    default = 'copy',
-    help = 'operating mode for transformations',
+copy_cmd_parser.add_argument('--to',
+    help = 'pattern that specifies the destination for file operations',
+    required = True,
+)
+
+list_cmd_parser = cmd_parser.add_parser('list',
+    help = 'print out all found tracks',
+)
+
+list_cmd_parser.add_argument('--display',
+    default = '%artist% - %title%',
+    help = 'pattern used to format output when listing tracks',
 )
 
 parser.add_argument('--tagsfile',
     default = '!.tags',
     help = 'internal: the filename of the target tags files in subdirectories',
-)
-
-parser.add_argument('--pattern',
-    default = "'  $$$' [[''%ISRC%'' -] %TRACKNUMBER% - ] %TITLE%",
-    help = 'the pattern used for output filenames in transformations',
 )
 
 parser.add_argument('--case-sensitive',
@@ -113,3 +123,4 @@ parser.add_argument('--coversearchpatterns',
 )
 
 args = parser.parse_args()
+

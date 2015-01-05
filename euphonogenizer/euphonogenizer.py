@@ -1,12 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# vim:ts=2:sw=2:et:ai
 
 import os
 
 import mtags
 import titleformat
 
-from args import args
+from args import args, parser
 from common import dbg
 
 
@@ -14,22 +15,25 @@ from common import dbg
 titleformatter = titleformat.TitleFormatter(args.case_sensitive, args.magic)
 
 
-def handle_track(track, printtrack):
-  if 'ARTIST' in track and 'TITLE' in track:
-    print(titleformatter.format(printtrack, args.pattern))
+def list_mode_handle_track(track, printtrack):
+  print(titleformatter.format(printtrack, args.display))
 
 
-def handle_tags(dirpath, tags):
-  print(dirpath + ':')
+def list_mode_handle_tags(dirpath, tags):
   for track, printable_track in tags.both_tracks():
-    handle_track(track, printable_track)
+    list_mode_handle_track(track, printable_track)
 
-
-def main():
+def list_mode():
   for dirpath, dirnames, filenames in os.walk(os.getcwd()):
     for tagsfile in [each for each in filenames if each == args.tagsfile]:
       tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
-      handle_tags(dirpath, tags)
+      list_mode_handle_tags(dirpath, tags)
+
+def main():
+  if args.cmd == 'list':
+    list_mode()
 
 
-# vim:ts=2:sw=2:et:ai
+if __name__ == '__main__':
+  main()
+
