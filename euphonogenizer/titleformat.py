@@ -2,10 +2,16 @@
 # -*- coding: utf-8 -*-
 # vim:ts=2:sw=2:et:ai
 
+from __future__ import unicode_literals
+
+import binascii
 import random
+import re
 import sys
+import unicodedata
 
 from common import dbg
+from common import unistr
 
 
 # TODO(dremelofdeath): Actually finish these mapping functions.
@@ -25,7 +31,7 @@ def magic_map_tracknumber(formatter, track):
   return track.get('TRACKNUMBER').zfill(2)
 
 def magic_map_track_number(formatter, track):
-  return str(int(track.get('TRACKNUMBER')))
+  return unistr(int(track.get('TRACKNUMBER')))
 
 
 magic_mappings = {
@@ -118,6 +124,9 @@ def __foo_va_conv_n_lazy_int(n):
 
 def __foo_va_lazy(x):
   return x.eval()
+
+def __foo_is_word_sep(c):
+  return c in ' /\\()[]'
 
 def foo_true(track, va):
   return True
@@ -246,11 +255,27 @@ def foo_not(track, va_x):
 def foo_xor(track, va_N):
   return reduce(lambda x, y: x ^ y, map(__foo_va_conv_bool_lazy, va_N))
 
+def foo_abbr(string_value):
+  parts = re.sub('[()]', '', string_value).split()
+  abbr = ''
+  for each in parts:
+    if each[0].isalnum():
+      abbr += each[0]
+    else:
+      abbr += each
+  return abbr
+
 def foo_abbr_arity1(track, va_x):
-  pass
+  x = va_x[0].eval()
+  abbr = foo_abbr(unistr(x))
+  return EvaluatorAtom(abbr, __foo_bool(x))
 
 def foo_abbr_arity2(track, va_x_len):
-  pass
+  x = va_x_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(va_x_len[1])
+  if len(unistr(x)) > length:
+    return foo_abbr_arity1(track, [x])
+  return x
 
 def foo_ansi(track, va_x):
   pass
@@ -258,23 +283,44 @@ def foo_ansi(track, va_x):
 def foo_ascii(track, va_x):
   pass
 
+def foo_caps_impl(va_x, lower):
+  x = va_x[0].eval()
+  result = ''
+  new_word = True
+  for c in unistr(x):
+    if __foo_is_word_sep(c):
+      new_word = True
+      result += c
+    else:
+      if new_word:
+        result += c.upper()
+        new_word = False
+      else:
+        if lower:
+          result += c.lower()
+        else:
+          result += c
+  return EvaluatorAtom(result, __foo_bool(x))
+
 def foo_caps(track, va_x):
-  pass
+  return foo_caps_impl(va_x, lower=True)
 
 def foo_caps2(track, va_x):
-  pass
+  return foo_caps_impl(va_x, lower=False)
 
 def foo_char(track, va_x):
   pass
 
 def foo_crc32(track, va_x):
-  pass
+  x = va_x[0].eval()
+  crc = binascii.crc32(unistr(x))
+  return EvaluatorAtom(crc, __foo_bool(x))
 
 def foo_crlf(track, va):
-  pass
+  return '\r\n'
 
 def foo_cut(track, va_a_len):
-  pass
+  return foo_left(track, va_a_len)
 
 def foo_directory_arity1(track, va_x):
   pass
@@ -286,7 +332,13 @@ def foo_directory_path(track, va_x):
   pass
 
 def foo_ext(track, va_x):
-  pass
+  x = va_x[0].eval()
+  ext = unistr(x).split('.')[-1]
+  for c in ext:
+    if c in '/\\|:':
+      return EvaluatorAtom('', __foo_bool(x))
+  return EvaluatorAtom(ext.split('?')[0], __foo_bool(x))
+
 
 def foo_filename(track, va_x):
   pass
@@ -307,13 +359,33 @@ def foo_insert(track, va_a_b_n):
   pass
 
 def foo_left(track, va_a_len):
-  pass
+  a = va_a_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(va_a_len[1])
+  a_str = unistr(a)
+  a_len = len(a_str)
+  if length < 0 or a_len == 0 or length >= a_len:
+    return a
+  elif length == 0:
+    return EvaluatorAtom('', __foo_bool(a))
+  return EvaluatorAtom(a_str[0:length], __foo_bool(a))
 
 def foo_len(track, va_a):
-  pass
+  a = va_a[0].eval()
+  return EvaluatorAtom(len(unistr(a)), __foo_bool(a))
 
 def foo_len2(track, va_a):
-  pass
+  a = va_a[0].eval()
+  length = 0
+  str_a = unistr(a)
+  for c in str_a:
+    width = unicodedata.east_asian_width(c)
+    if width == 'N' or width == 'Na' or width == 'H':
+      # Narrow / Halfwidth character
+      length += 1
+    elif width == 'W' or width == 'F' or width == 'A':
+      # Wide / Fullwidth / Ambiguous character
+      length += 2
+  return EvaluatorAtom(length, __foo_bool(a))
 
 def foo_longer(track, va_a_b):
   pass
@@ -331,9 +403,9 @@ def foo_num(track, va_n_len):
   truth = foo_or(track, [n, length])
   string_value = None
   if (length_int > 0):
-    string_value = str(__foo_va_conv_n(n)).zfill(length_int)
+    string_value = unistr(__foo_va_conv_n(n)).zfill(length_int)
   else:
-    string_value = str(__foo_int(__foo_va_conv_n(n)))
+    string_value = unistr(__foo_int(__foo_va_conv_n(n)))
   return EvaluatorAtom(string_value, truth)
 
 def foo_pad_arity2(track, va_x_len):
@@ -390,14 +462,14 @@ def foo_strstr(track, va_s1_s2):
 def foo_strcmp(track, va_s1_s2):
   s1 = va_s1_s2[0].eval()
   s2 = va_s1_s2[1].eval()
-  if str(s1) == str(s2):
+  if unistr(s1) == unistr(s2):
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
 def foo_stricmp(track, va_s1_s2):
   s1 = va_s1_s2[0].eval()
   s2 = va_s1_s2[1].eval()
-  if str(s1).lower() == str(s2).lower():
+  if unistr(s1).lower() == unistr(s2).lower():
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
@@ -564,17 +636,19 @@ def vmarshal(value):
     return None
 
   string_value = value
+  truth_value = False
 
   try:
     string_value = value.string_value
+    truth_value = value.truth_value
   except AttributeError:
     if value is True or value is False:
       string_value = ''
 
-  return EvaluatorAtom(string_value, True if value else False)
+  return EvaluatorAtom(string_value, truth_value)
 
 def vinvoke(track, function, argv):
-  arity = str(len(argv))
+  arity = unistr(len(argv))
   funcref = None
   try:
     funcref = foo_function_vtable[function][arity]
@@ -596,6 +670,9 @@ class EvaluatorAtom:
   def __str__(self):
     return str(self.string_value)
 
+  def __unicode__(self):
+    return unistr(self.string_value)
+
   def __nonzero__(self):
     return self.truth_value
 
@@ -604,6 +681,10 @@ class EvaluatorAtom:
 
   def __repr__(self):
     return 'atom(%s, %s)' % (repr(self.string_value), self.truth_value)
+
+  def eval(self):
+    # Evaluating an expression that's already been evaluated returns itself.
+    return self
 
 
 class LazyExpression:
@@ -644,7 +725,7 @@ class TitleFormatter:
   def format(self, track, title_format):
     evaluated_value = self.eval(track, title_format)
     if evaluated_value is not None:
-      return str(evaluated_value)
+      return unistr(evaluated_value)
     return None
 
   def eval(self, track, title_format, conditional=False, depth=0, offset=0):
@@ -728,7 +809,7 @@ class TitleFormatter:
             if self.debug:
               dbg('value is: %s' % evaluated_value, depth)
             if evaluated_value:
-              output += str(evaluated_value)
+              output += unistr(evaluated_value)
             if evaluated_value is not None and evaluated_value is not False:
               evaluation_count += 1
             if self.debug:
@@ -796,7 +877,7 @@ class TitleFormatter:
                       current_fn, repr(fn_result)), depth)
 
                 if fn_result is not None and fn_result is not False:
-                  str_fn_result = str(fn_result)
+                  str_fn_result = unistr(fn_result)
                   if str_fn_result:
                     output += str_fn_result
                 if fn_result:
@@ -878,7 +959,7 @@ class TitleFormatter:
                 if self.debug:
                   dbg('value is: %s' % evaluated_value, depth)
                 if evaluated_value:
-                  output += str(evaluated_value)
+                  output += unistr(evaluated_value)
                   evaluation_count += 1
                 if self.debug:
                   dbg('evaluation count is now %s' % evaluation_count, depth)
