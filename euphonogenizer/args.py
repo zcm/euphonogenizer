@@ -10,7 +10,7 @@ Written by Zachary Murray (dremelofdeath). Loved by you, I hope.
 
 parser = argparse.ArgumentParser(prog='euphonogenizer', description=desc)
 
-cmd_parser = parser.add_subparsers(title='Supported operations', dest='cmd')
+cmd_parser = parser.add_subparsers(title='supported operations', dest='cmd')
 
 copy_cmd_parser = cmd_parser.add_parser('copy',
     help = 'copy all referenced files found in metadata',
@@ -28,34 +28,45 @@ list_cmd_parser = cmd_parser.add_parser('list',
 list_cmd_parser.add_argument('--display',
     default = '%artist% - %title%',
     help = 'pattern used to format output when listing tracks',
+    metavar = 'PATTERN',
+)
+
+list_cmd_output_filter = list_cmd_parser.add_mutually_exclusive_group()
+
+list_cmd_output_filter.add_argument('--startswith',
+    default = False,
+    help = 'display only output that starts with the specified pattern',
+    metavar = 'PATTERN',
+)
+
+list_cmd_output_filter.add_argument('--equals',
+    default = False,
+    help = 'display only output that matches the specified pattern exactly',
+    metavar = 'PATTERN',
+)
+
+list_cmd_parser.add_argument('--unique',
+    action = 'store_true',
+    default = False,
+    help = 'only print each uniquely formatted line once',
 )
 
 parser.add_argument('--tagsfile',
     default = '!.tags',
-    help = 'internal: the filename of the target tags files in subdirectories',
+    help = 'the filename of the target tags files in subdirectories (!.tags)',
 )
 
 parser.add_argument('--case-sensitive',
     action = 'store_true',
     dest = 'case_sensitive',
-    help = 'force variable resolution to be case-sensitive (default is false)',
-)
-parser.add_argument('--no-case-sensitive',
-    action = 'store_false',
-    dest = 'case_sensitive',
-    help = 'force variable resolution to be case-insensitive (the default)',
+    help = 'force variable resolution to instead be case-sensitive',
 )
 parser.set_defaults(case_sensitive=False)
 
-parser.add_argument('--magic',
-    action = 'store_true',
-    dest = 'magic',
-    help = 'allow variable resolution to search multiple fields (the default)',
-)
-parser.add_argument('--no-magic',
+parser.add_argument('--disable-magic',
     action = 'store_false',
     dest = 'magic',
-    help = 'forbid magical variable resolution (default is allow)',
+    help = 'prevent variable resolution from searching multiple fields',
 )
 parser.set_defaults(magic=True)
 
@@ -120,6 +131,8 @@ parser.add_argument('--coversearchpatterns',
       'FOLDER*.jpg',
     ],
     nargs = '+',
+    help = 'search list for front cover art',
+    metavar = 'PATTERN',
 )
 
 args = parser.parse_args()
