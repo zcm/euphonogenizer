@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 
 import binascii
 import codecs
+import itertools
 import random
 import re
 import sys
@@ -633,13 +634,32 @@ def foo_shortest(track, va_aN):
   return shortest
 
 def foo_strchr(track, va_s_c):
-  pass
+  s = unistr(va_s_c[0].eval())
+  c = unistr(va_s_c[1].eval())
+  if c:
+    c = c[0]
+    for i, char in enumerate(s):
+      if c == char:
+        return EvaluatorAtom(i + 1, True)
+  return EvaluatorAtom(0, False)
 
 def foo_strrchr(track, va_s_c):
-  pass
+  s = unistr(va_s_c[0].eval())
+  c = unistr(va_s_c[1].eval())
+  if c:
+    c = c[0]
+    for i, char in itertools.izip(reversed(xrange(len(s))), reversed(s)):
+      if c == char:
+        return EvaluatorAtom(i + 1, True)
+  return EvaluatorAtom(0, False)
 
 def foo_strstr(track, va_s1_s2):
-  pass
+  s1 = unistr(va_s1_s2[0].eval())
+  s2 = unistr(va_s1_s2[1].eval())
+  found_index = 0
+  if s1 and s2:
+    found_index = s1.find(s2) + 1
+  return EvaluatorAtom(found_index, __foo_bool(found_index))
 
 def foo_strcmp(track, va_s1_s2):
   s1 = va_s1_s2[0].eval()
@@ -656,7 +676,25 @@ def foo_stricmp(track, va_s1_s2):
   return EvaluatorAtom('', False)
 
 def foo_substr(track, va_s_m_n):
-  pass
+  s = va_s_m_n[0].eval()
+  m = __foo_va_conv_n_lazy_int(va_s_m_n[1]) - 1
+  n = __foo_va_conv_n_lazy_int(va_s_m_n[2])
+  if n < m:
+    return EvaluatorAtom('', __foo_bool(s))
+  if m < 0:
+    m = 0
+  s_str = unistr(s)
+  s_len = len(s_str)
+  result = None
+  if n > s_len:
+    n = s_len
+  if m == 0 and n == s_len:
+    return s
+  elif n == s_len:
+    result = s_str[m:]
+  else:
+    result = s_str[m:n]
+  return EvaluatorAtom(result, __foo_bool(s))
 
 def foo_stripprefix_arity1(track, va_x):
   pass
