@@ -709,16 +709,21 @@ def foo_swapprefix_arityN(track, va_x_prefix1_prefix2_prefixN):
   pass
 
 def foo_trim(track, va_s):
-  pass
+  s = va_s[0].eval()
+  return EvaluatorAtom(unistr(s).strip(), __foo_bool(s))
 
 def foo_tab_arity0(track, va):
-  pass
+  return '\t'
 
 def foo_tab_arity1(track, va_n):
-  pass
+  n = __foo_va_conv_n_lazy_int(va_n[0])
+  if n < 0 or n > 16:
+    n = 16
+  return '\t' * n
 
 def foo_upper(track, va_s):
-  pass
+  s = va_s[0].eval()
+  return EvaluatorAtom(unistr(s).upper(), __foo_bool(s))
 
 def foo_meta_arity1(track, va_name):
   pass
