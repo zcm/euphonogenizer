@@ -545,13 +545,13 @@ def foo_repeat(track, va_a_n):
   n = __foo_va_conv_n_lazy_int(va_a_n[1])
   return EvaluatorAtom(unistr(a) * n, __foo_bool(a))
 
-def foo_replace_break_recursive(a, va_a_bN_cN, i):
-  if i < len(va_a_bN_cN):
+def foo_replace_explode_recursive(a, va_a_bN_cN, i):
+  if i + 1 < len(va_a_bN_cN):
     b = unistr(va_a_bN_cN[i].eval())
     splits = a.split(b)
     current = []
     for each in splits:
-      sub_splits = foo_replace_break_recursive(each, va_a_bN_cN, i + 2)
+      sub_splits = foo_replace_explode_recursive(each, va_a_bN_cN, i + 2)
       if sub_splits is not None:
         current.append(sub_splits)
     if not current:
@@ -573,7 +573,7 @@ def foo_replace_join_recursive(splits, va_a_bN_cN, i):
 
 def foo_replace(track, va_a_bN_cN):
   a = va_a_bN_cN[0].eval()
-  splits = foo_replace_break_recursive(unistr(a), va_a_bN_cN, 1)
+  splits = foo_replace_explode_recursive(unistr(a), va_a_bN_cN, 1)
   result = foo_replace_join_recursive(splits, va_a_bN_cN, 2)
   # Truthfully, I have no idea if this is actually right, but it's probably good
   # enough for what it does. The sample cases check out, at least.
