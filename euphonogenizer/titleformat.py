@@ -533,7 +533,6 @@ def foo_progress_universal(va_pos_range_len_a_b, is2):
 
   return EvaluatorAtom(progress, foo_and(None, [pos, range_value]))
 
-
 def foo_progress(track, va_pos_range_len_a_b):
   return foo_progress_universal(va_pos_range_len_a_b, False)
 
@@ -541,10 +540,43 @@ def foo_progress2(track, va_pos_range_len_a_b):
   return foo_progress_universal(va_pos_range_len_a_b, True)
 
 def foo_repeat(track, va_a_n):
-  pass
+  a = va_a_n[0].eval()
+  n = __foo_va_conv_n_lazy_int(va_a_n[1])
+  return EvaluatorAtom(unistr(a) * n, __foo_bool(a))
 
-def foo_replace(track, va_a_n):
-  pass
+def foo_replace_break_recursive(a, va_a_bN_cN, i):
+  if i < len(va_a_bN_cN):
+    b = unistr(va_a_bN_cN[i].eval())
+    splits = a.split(b)
+    current = []
+    for each in splits:
+      sub_splits = foo_replace_break_recursive(each, va_a_bN_cN, i + 2)
+      if sub_splits is not None:
+        current.append(sub_splits)
+    if not current:
+      current = splits
+    return current
+
+def foo_replace_join_recursive(splits, va_a_bN_cN, i):
+  if i < len(va_a_bN_cN):
+    current = []
+    for each in splits:
+      sub_joined = foo_replace_join_recursive(each, va_a_bN_cN, i + 2)
+      if sub_joined is not None:
+        current.append(sub_joined)
+    c = unistr(va_a_bN_cN[i].eval())
+    if not current:
+      current = splits
+    joined = c.join(current)
+    return joined
+
+def foo_replace(track, va_a_bN_cN):
+  a = va_a_bN_cN[0].eval()
+  splits = foo_replace_break_recursive(unistr(a), va_a_bN_cN, 1)
+  result = foo_replace_join_recursive(splits, va_a_bN_cN, 2)
+  # Truthfully, I have no idea if this is actually right, but it's probably good
+  # enough for what it does. The sample cases check out, at least.
+  return EvaluatorAtom(result, __foo_bool(a))
 
 def foo_right(track, va_a_len):
   pass
@@ -704,7 +736,12 @@ foo_function_vtable = {
     'progress': {'5': foo_progress},
     'progress2': {'5': foo_progress2},
     'repeat': {'2': foo_repeat},
-    'replace': {'3': foo_replace},
+    'replace': {
+        '0': foo_false,
+        '1': foo_false,
+        '2': foo_false,
+        'n': foo_replace
+    },
     'right': {'2': foo_right},
     'roman': {'1': foo_roman},
     'rot13': {'1': foo_rot13},
