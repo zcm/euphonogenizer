@@ -5,6 +5,7 @@
 from __future__ import unicode_literals
 
 import binascii
+import codecs
 import random
 import re
 import sys
@@ -588,14 +589,48 @@ def foo_right(track, va_a_len):
     return EvaluatorAtom('', __foo_bool(a))
   return EvaluatorAtom(a_str[a_len-length:], __foo_bool(a))
 
+__roman_numerals = (
+    ('M',  1000),
+    ('CM', 900),
+    ('D',  500),
+    ('CD', 400),
+    ('C',  100),
+    ('XC', 90),
+    ('L',  50),
+    ('XL', 40),
+    ('X',  10),
+    ('IX', 9),
+    ('V',  5),
+    ('IV', 4),
+    ('I',  1),
+)
+
 def foo_roman(track, va_n):
-  pass
+  n = va_n[0].eval()
+  n_int = __foo_int(__foo_va_conv_n(n))
+  result = ''
+  if n_int > 0 and n_int <= 100000:
+    for numeral, value in __roman_numerals:
+      while n_int >= value:
+        result += numeral
+        n_int -= value
+  return EvaluatorAtom(result, __foo_bool(n))
 
 def foo_rot13(track, va_a):
-  pass
+  a = va_a[0].eval()
+  rot = codecs.encode(unistr(a), 'rot_13')
+  return EvaluatorAtom(rot, __foo_bool(a))
 
 def foo_shortest(track, va_aN):
-  pass
+  shortest = None
+  shortest_len = -1
+  for each in va_aN:
+    current = each.eval()
+    current_len = len(unistr(current))
+    if shortest_len == -1 or current_len < shortest_len:
+      shortest = current
+      shortest_len = current_len
+  return shortest
 
 def foo_strchr(track, va_s_c):
   pass
@@ -752,7 +787,7 @@ foo_function_vtable = {
     'right': {'2': foo_right},
     'roman': {'1': foo_roman},
     'rot13': {'1': foo_rot13},
-    'shortest': {'n': foo_shortest},
+    'shortest': {'0': foo_false, '1': foo_nop, 'n': foo_shortest},
     'strchr': {'2': foo_strchr},
     'strrchr': {'2': foo_strrchr},
     'strstr': {'2': foo_strstr},
