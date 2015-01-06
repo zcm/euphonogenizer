@@ -10,8 +10,7 @@ import re
 import sys
 import unicodedata
 
-from common import dbg
-from common import unistr
+from common import dbg, unistr
 
 
 # TODO(dremelofdeath): Actually finish these mapping functions.
@@ -579,7 +578,15 @@ def foo_replace(track, va_a_bN_cN):
   return EvaluatorAtom(result, __foo_bool(a))
 
 def foo_right(track, va_a_len):
-  pass
+  a = va_a_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(va_a_len[1])
+  a_str = unistr(a)
+  a_len = len(a_str)
+  if a_len == 0 or length >= a_len:
+    return a
+  elif length <= 0:
+    return EvaluatorAtom('', __foo_bool(a))
+  return EvaluatorAtom(a_str[a_len-length:], __foo_bool(a))
 
 def foo_roman(track, va_n):
   pass
