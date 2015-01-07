@@ -747,17 +747,42 @@ def foo_substr(track, va_s_m_n):
     result = s_str[m:n]
   return EvaluatorAtom(result, __foo_bool(s))
 
-def foo_stripprefix_arity1(track, va_x):
-  pass
+def foo_strip_swap_prefix(va_x_prefixN, should_swap):
+  x = va_x_prefixN[0].eval()
+  x_str = unistr(x)
+  x_str_lower = x_str.lower()
 
-def foo_stripprefix_arityN(track, va_x_prefix1_prefix2_prefixN):
-  pass
+  for i in range(1, len(va_x_prefixN)):
+    prefix = va_x_prefixN[i]
+
+    try:
+      prefix = unistr(prefix.eval())
+    except AttributeError:
+      pass
+
+    if x_str_lower.startswith(prefix.lower() + ' '):
+      prefix_len = len(prefix)
+      result = x_str[prefix_len+1:]
+
+      if should_swap:
+        actual_prefix = x_str[0:prefix_len]
+        result += ', ' + actual_prefix
+
+      return EvaluatorAtom(result, __foo_bool(x))
+
+  return x
+
+def foo_stripprefix_arity1(track, va_x):
+  return foo_stripprefix_arityN(track, va_x + ['A', 'The'])
+
+def foo_stripprefix_arityN(track, va_x_prefixN):
+  return foo_strip_swap_prefix(va_x_prefixN, False)
 
 def foo_swapprefix_arity1(track, va_x):
-  pass
+  return foo_swapprefix_arityN(track, va_x + ['A', 'The'])
 
-def foo_swapprefix_arityN(track, va_x_prefix1_prefix2_prefixN):
-  pass
+def foo_swapprefix_arityN(track, va_x_prefixN):
+  return foo_strip_swap_prefix(va_x_prefixN, True)
 
 def foo_trim(track, va_s):
   s = va_s[0].eval()
@@ -777,16 +802,59 @@ def foo_upper(track, va_s):
   return EvaluatorAtom(unistr(s).upper(), __foo_bool(s))
 
 def foo_meta_arity1(track, va_name):
-  pass
+  return foo_meta_sep_arity2(track, va_name + [', '])
 
 def foo_meta_arity2(track, va_name_n):
-  pass
+  name = unistr(va_name_n[0].eval())
+  n = __foo_va_conv_n_lazy_int(va_name_n[1])
+  if n < 0:
+    return False
+  value = track.get(name)
+  if not value:
+    value = track.get(name.upper())
+    if not value:
+      return False
+  if isinstance(value, list):
+    if n >= len(value):
+      return False
+    value = value[n]
+  elif n != 0:
+    return False
+  return EvaluatorAtom(value, True)
 
 def foo_meta_sep_arity2(track, va_name_sep):
-  pass
+  name = unistr(va_name_sep[0].eval())
+
+  sep = va_name_sep[1]
+  try:
+    sep = unistr(sep.eval())
+  except AttributeError:
+    pass
+
+  value = track.get(name)
+  if not value:
+    value = track.get(name.upper())
+    if not value:
+      return False
+  if isinstance(value, list):
+    value = sep.join(value)
+  return EvaluatorAtom(value, True)
 
 def foo_meta_sep_arity3(track, va_name_sep_lastsep):
-  pass
+  name = unistr(va_name_sep_lastsep[0].eval())
+  sep = unistr(va_name_sep_lastsep[1].eval())
+  lastsep = unistr(va_name_sep_lastsep[2].eval())
+  value = track.get(name)
+  if not value:
+    value = track.get(name.upper())
+    if not value:
+      return False
+  if isinstance(value, list):
+    if len(value) > 1:
+      value = sep.join(value[:-1]) + lastsep + value[-1]
+    else:
+      value = value[0]
+  return EvaluatorAtom(value, True)
 
 def foo_meta_test(track, va_nameN):
   pass
@@ -888,8 +956,16 @@ foo_function_vtable = {
     'strcmp': {'2': foo_strcmp},
     'stricmp': {'2': foo_stricmp},
     'substr': {'3': foo_substr},
-    'stripprefix': {'1': foo_stripprefix_arity1, 'n': foo_stripprefix_arityN},
-    'swapprefix': {'1': foo_swapprefix_arity1, 'n': foo_swapprefix_arityN},
+    'stripprefix': {
+        '0': foo_false,
+        '1': foo_stripprefix_arity1,
+        'n': foo_stripprefix_arityN
+    },
+    'swapprefix': {
+        '0': foo_false,
+        '1': foo_swapprefix_arity1,
+        'n': foo_swapprefix_arityN
+    },
     'trim': {'1': foo_trim},
     'tab': {'0': foo_tab_arity0, '1': foo_tab_arity1},
     'upper': {'1': foo_upper},
