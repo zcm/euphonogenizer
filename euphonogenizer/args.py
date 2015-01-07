@@ -3,12 +3,14 @@
 
 import argparse
 
+from common import progname
+
 desc = '''
 Manages music libraries with metadata in M-TAGS format.
-Written by Zachary Murray (dremelofdeath). Loved by you, I hope.
+Written with love by Zachary Murray (dremelofdeath).
 '''
 
-parser = argparse.ArgumentParser(prog='euphonogenizer', description=desc)
+parser = argparse.ArgumentParser(prog=progname, description=desc)
 
 cmd_parser = parser.add_subparsers(title='supported operations', dest='cmd')
 
@@ -19,6 +21,13 @@ copy_cmd_parser = cmd_parser.add_parser('copy',
 copy_cmd_parser.add_argument('--to',
     help = 'pattern that specifies the destination for file operations',
     required = True,
+)
+
+copy_cmd_parser.add_argument('--dry-run',
+    action = 'store_true',
+    default = 'false',
+    dest = 'dry_run',
+    help = "don't actually copy anything, just show what would happen",
 )
 
 list_cmd_parser = cmd_parser.add_parser('list',

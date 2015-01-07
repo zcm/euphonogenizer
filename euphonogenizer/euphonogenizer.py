@@ -3,13 +3,14 @@
 # vim:ts=2:sw=2:et:ai
 
 import os
+import shutil
 import sys
 
 import mtags
 import titleformat
 
 from args import args, parser
-from common import dbg
+from common import dbg, err, unicwd, uniprint, unistr
 
 
 # TODO(dremelofdeath): Make this whole block a single class.
@@ -64,14 +65,37 @@ def list_mode_handle_tags(dirpath, tags):
     list_mode_handle_track(track, **track_params)
 
 def list_mode():
-  for dirpath, dirnames, filenames in os.walk(os.getcwd()):
+  return tags_for_each(list_mode_handle_tags)
+
+def print_copy_info(src, dst):
+  uniprint('%s ==> %s' % (src, dst))
+
+def copy_mode_handle_track(dirpath, track, **kwargs):
+  track_filename = unistr(track.get('@'))
+  u_dirpath = unistr(dirpath)
+  u_track_filename = unistr(track_filename)
+  src = os.path.join(u_dirpath, u_track_filename)
+  dst = titleformatter.format(track, args.to)
+  print_copy_info(src, dst)
+
+def copy_mode_handle_tags(dirpath, tags):
+  for track in tags.tracks():
+    copy_mode_handle_track(dirpath, track)
+
+def copy_mode():
+  return tags_for_each(copy_mode_handle_tags)
+
+def tags_for_each(handler):
+  for dirpath, dirnames, filenames in os.walk(unicwd()):
     for tagsfile in [each for each in filenames if each == args.tagsfile]:
       tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
-      list_mode_handle_tags(dirpath, tags)
+      handler(dirpath, tags)
 
 def main():
   if args.cmd == 'list':
     list_mode()
+  elif args.cmd == 'copy':
+    copy_mode()
 
 
 if __name__ == '__main__':
