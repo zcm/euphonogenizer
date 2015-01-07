@@ -279,10 +279,18 @@ def foo_abbr_arity2(track, va_x_len):
   return x
 
 def foo_ansi(track, va_x):
-  pass
+  x = va_x[0].eval()
+  # Doing the conversion this way will probably not produce the same output with
+  # wide characters as Foobar, which produces two '??' instead of one. I don't
+  # have a multibyte build of Python lying around right now, so I can't
+  # confirm at the moment. But really, it probably doesn't matter.
+  result = unistr(unistr(x).encode('latin-1', errors='replace'))
+  return EvaluatorAtom(result, __foo_bool(x))
 
 def foo_ascii(track, va_x):
-  pass
+  x = va_x[0].eval()
+  result = unistr(unistr(x).encode('ascii', errors='replace'))
+  return EvaluatorAtom(result, __foo_bool(x))
 
 def foo_caps_impl(va_x, lower):
   x = va_x[0].eval()
@@ -310,7 +318,16 @@ def foo_caps2(track, va_x):
   return foo_caps_impl(va_x, lower=False)
 
 def foo_char(track, va_x):
-  pass
+  x = __foo_va_conv_n_lazy_int(va_x[0])
+  if x <= 0:
+    return ''
+  try:
+    return unichr(x)
+  except ValueError:
+    # Also happens when using a narrow Python build
+    return '?'
+  except OverflowError:
+    return ''
 
 def foo_crc32(track, va_x):
   x = va_x[0].eval()
