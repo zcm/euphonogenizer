@@ -374,13 +374,32 @@ def foo_ext(track, va_x):
   return EvaluatorAtom(ext.split('?')[0], __foo_bool(x))
 
 def foo_filename(track, va_x):
-  pass
+  x = va_x[0].eval()
+  x_str = unistr(x)
+  parts = re.split('[\\\\/:|]', x_str)
+  parts_len = len(parts)
+  if parts_len <= 0:
+    return EvaluatorAtom('', __foo_bool(x))
+  filename = x_str
+  if parts_len >= 2:
+    filename = parts[-1]
+  return EvaluatorAtom(filename.split('.')[0], __foo_bool(x))
 
 def foo_fix_eol_arity1(track, va_x):
-  pass
+  return foo_fix_eol_arity2(track, va_x + [' (...)'])
 
 def foo_fix_eol_arity2(track, va_x_indicator):
-  pass
+  x = va_x_indicator[0].eval()
+  indicator = va_x_indicator[1]
+
+  try:
+    indicator = unistr(indicator.eval())
+  except AttributeError:
+    pass
+
+  result = unistr(x).split('\r\n')[0].split('\n')[0]
+
+  return EvaluatorAtom(result + indicator, __foo_bool(x))
 
 def foo_hex_arity1(track, va_n):
   return foo_hex_arity2(track, [va_n[0], 0])
