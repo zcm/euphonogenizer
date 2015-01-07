@@ -341,13 +341,29 @@ def foo_cut(track, va_a_len):
   return foo_left(track, va_a_len)
 
 def foo_directory_arity1(track, va_x):
-  pass
+  x = va_x[0].eval()
+  parts = re.split('[\\\\/:|]', unistr(x))
+  if len(parts) < 2:
+    return EvaluatorAtom('', __foo_bool(x))
+  return EvaluatorAtom(parts[-2], __foo_bool(x))
 
 def foo_directory_arity2(track, va_x_n):
-  pass
+  x = va_x_n[0].eval()
+  n = __foo_va_conv_n_lazy_int(va_x_n[1])
+  if n <= 0:
+    return EvaluatorAtom('', __foo_bool(x))
+  parts = re.split('[\\\\/:|]', unistr(x))
+  parts_len = len(parts)
+  if n >= parts_len or parts_len < 2:
+    return EvaluatorAtom('', __foo_bool(x))
+  return EvaluatorAtom(parts[parts_len - n - 1], __foo_bool(x))
 
 def foo_directory_path(track, va_x):
-  pass
+  x = va_x[0].eval()
+  parts = re.split('[\\\\/:|]', unistr(x)[::-1], 1)
+  if len(parts) < 2:
+    return EvaluatorAtom('', __foo_bool(x))
+  return EvaluatorAtom(parts[1][::-1], __foo_bool(x))
 
 def foo_ext(track, va_x):
   x = va_x[0].eval()
@@ -356,7 +372,6 @@ def foo_ext(track, va_x):
     if c in '/\\|:':
       return EvaluatorAtom('', __foo_bool(x))
   return EvaluatorAtom(ext.split('?')[0], __foo_bool(x))
-
 
 def foo_filename(track, va_x):
   pass
