@@ -460,8 +460,6 @@ def foo_len2(track, va_a):
 def foo_longer(track, va_a_b):
   len_a = len(unistr(va_a_b[0].eval()))
   len_b = len(unistr(va_a_b[1].eval()))
-  print len_a, len_b
-  print repr(len_a > len_b)
   return len_a > len_b
 
 def foo_lower(track, va_a):
