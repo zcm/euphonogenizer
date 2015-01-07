@@ -144,7 +144,6 @@ def foo_one(track, va):
 def foo_nop(track, va):
   return va[0].eval()
 
-# TODO(dremelofdeath): Implement all these functions.
 def foo_if_arity2(track, va_cond_then):
   if va_cond_then[0].eval():
     return va_cond_then[1].eval()
@@ -857,10 +856,25 @@ def foo_meta_sep_arity3(track, va_name_sep_lastsep):
   return EvaluatorAtom(value, True)
 
 def foo_meta_test(track, va_nameN):
-  pass
+  for each in va_nameN:
+    name = unistr(each.eval())
+    value = track.get(name)
+    if not value:
+      value = track.get(name.upper())
+      if not value:
+        return False
+  return EvaluatorAtom(1, True)
 
 def foo_meta_num(track, va_name):
-  pass
+  name = unistr(va_name[0].eval())
+  value = track.get(name)
+  if not value:
+    value = track.get(name.upper())
+    if not value:
+      return 0
+  if isinstance(value, list):
+    return EvaluatorAtom(len(value), True)
+  return EvaluatorAtom(1, True)
 
 def foo_year(track, va_time):
   pass
@@ -909,7 +923,6 @@ foo_function_vtable = {
     'or': {'0': foo_false, '1': foo_nop, 'n': foo_or},
     'not': {'1': foo_not},
     'xor': {'0': foo_false, '1': foo_nop, 'n': foo_xor},
-    # TODO(dremelofdeath): This is where I left off...
     'abbr': {'1': foo_abbr_arity1, '2': foo_abbr_arity2},
     'ansi': {'1': foo_ansi},
     'ascii': {'1': foo_ascii},
