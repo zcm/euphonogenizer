@@ -14,8 +14,17 @@ parser = argparse.ArgumentParser(prog=progname, description=desc)
 
 cmd_parser = parser.add_subparsers(title='supported operations', dest='cmd')
 
+shared_cmd_parser = argparse.ArgumentParser(add_help=False)
+
+shared_cmd_parser.add_argument('--limit',
+    default = -1,
+    help = 'stop processing records after the specified number of tracks',
+    type = int,
+)
+
 copy_cmd_parser = cmd_parser.add_parser('copy',
     help = 'copy all referenced files found in metadata',
+    parents = [shared_cmd_parser],
 )
 
 copy_cmd_parser.add_argument('--to',
@@ -25,13 +34,14 @@ copy_cmd_parser.add_argument('--to',
 
 copy_cmd_parser.add_argument('--dry-run',
     action = 'store_true',
-    default = 'false',
     dest = 'dry_run',
     help = "don't actually copy anything, just show what would happen",
 )
+parser.set_defaults(dry_run=False)
 
 list_cmd_parser = cmd_parser.add_parser('list',
     help = 'print out all found tracks',
+    parents = [shared_cmd_parser],
 )
 
 list_cmd_parser.add_argument('--display',
