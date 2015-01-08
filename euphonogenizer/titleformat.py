@@ -412,7 +412,7 @@ def foo_filename(track, memory, va_x):
   filename = x_str
   if parts_len >= 2:
     filename = parts[-1]
-  return EvaluatorAtom(filename.split('.')[0], __foo_bool(x))
+  return EvaluatorAtom(filename[::-1].split('.', 1)[-1][::-1], __foo_bool(x))
 
 def foo_fix_eol_arity1(track, memory, va_x):
   return foo_fix_eol_arity2(track, memory, va_x + [' (...)'])
