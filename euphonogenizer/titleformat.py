@@ -15,18 +15,28 @@ import unicodedata
 from common import dbg, unistr
 
 
-# TODO(dremelofdeath): Actually finish these mapping functions.
 def magic_map_filename(formatter, track):
-  pass
+  value = track.get('@')
+  if value is not None and value is not False:
+    return unistr(foo_filename(None, None, [value]))
+  return None
 
 def magic_map_filename_ext(formatter, track):
-  pass
+  value = track.get('@')
+  if value is not None and value is not False:
+    filename = unistr(foo_filename(None, None, [value]))
+    ext = unistr(foo_ext(None, None, [value]))
+    if ext:
+      filename += '.' + ext
+    return filename
+  return None
 
 def magic_map_track_artist(formatter, track):
   artist = formatter.magic_resolve_variable(track, 'artist')
   album_artist = formatter.magic_resolve_variable(track, 'album artist')
   if artist != album_artist:
     return artist
+  return None
 
 def magic_map_tracknumber(formatter, track):
   value = track.get('TRACKNUMBER')
@@ -373,7 +383,13 @@ def foo_directory_path(track, memory, va_x):
   return EvaluatorAtom(parts[1][::-1], __foo_bool(x))
 
 def foo_ext(track, memory, va_x):
-  x = va_x[0].eval()
+  x = va_x[0]
+
+  try:
+    x = x.eval()
+  except AttributeError:
+    pass
+
   ext = unistr(x).split('.')[-1]
   for c in ext:
     if c in '/\\|:':
@@ -381,7 +397,13 @@ def foo_ext(track, memory, va_x):
   return EvaluatorAtom(ext.split('?')[0], __foo_bool(x))
 
 def foo_filename(track, memory, va_x):
-  x = va_x[0].eval()
+  x = va_x[0]
+
+  try:
+    x = x.eval()
+  except AttributeError:
+    pass
+
   x_str = unistr(x)
   parts = re.split('[\\\\/:|]', x_str)
   parts_len = len(parts)
