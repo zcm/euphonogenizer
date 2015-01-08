@@ -47,6 +47,12 @@ def list_mode_handle_track(track, **kwargs):
       equals = titleformatter.format(track, equals)
     if formatted == equals:
       print_output(formatted)
+  elif 'contains' in kwargs:
+    contains = kwargs['contains']
+    if 'containsstatic' not in kwargs or not kwargs['contains']:
+      contains = titleformatter.format(track, contains)
+    if contains in formatted:
+      print_output(formatted)
   else:
     print_output(formatted)
 
@@ -61,6 +67,10 @@ def list_mode_handle_tags(dirpath, tags):
     track_params['equals'] = args.equals
     if is_static_pattern(args.equals):
       track_params['equalsstatic'] = True
+  elif args.contains:
+    track_params['contains'] = args.contains
+    if is_static_pattern(args.contains):
+      track_params['containsstatic'] = True
   for track in tags.tracks():
     list_mode_handle_track(track, **track_params)
 

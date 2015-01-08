@@ -54,6 +54,12 @@ list_cmd_output_filter.add_argument('--equals',
     metavar = 'PATTERN',
 )
 
+list_cmd_output_filter.add_argument('--contains',
+    default = False,
+    help = 'display only output that contains the specified pattern',
+    metavar = 'PATTERN',
+)
+
 list_cmd_parser.add_argument('--unique',
     action = 'store_true',
     default = False,
