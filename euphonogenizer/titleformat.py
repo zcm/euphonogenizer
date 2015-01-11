@@ -62,6 +62,7 @@ magic_mappings = {
     'title': ['TITLE', '@'],
     'tracknumber': magic_map_tracknumber,
     'track number': magic_map_track_number,
+    '_date_': ['DATE'],
 }
 
 def __foo_bool(b):
