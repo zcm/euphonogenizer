@@ -7,6 +7,8 @@ from __future__ import unicode_literals
 import binascii
 import codecs
 import itertools
+import os
+import platform
 import random
 import re
 import sys
@@ -1112,9 +1114,11 @@ class TitleFormatParseException(Exception):
 
 
 class TitleFormatter:
-  def __init__(self, case_sensitive=False, magic=True, debug=False):
+  def __init__(
+      self, case_sensitive=False, magic=True, for_filename=False, debug=False):
     self.case_sensitive = case_sensitive
     self.magic = magic
+    self.for_filename = for_filename
     self.debug = debug
 
   def format(self, track, title_format):
@@ -1413,6 +1417,17 @@ class TitleFormatter:
         dbg('about to return nothing for output: %s' % output, depth)
       return None
 
+    if depth == 0 and self.for_filename:
+      system = platform.system()
+      if system == 'Windows' and re.match('^[A-Z]:', output, flags=re.I):
+        disk_id = output[0:2]
+        output = disk_id + re.sub('[\\\\/:|]', re.escape(os.sep), output[2:])
+      else:
+        output = re.sub('[\\\\/:|]', re.escape(os.sep), output)
+      output = re.sub('[*]', 'x', output)
+      output = re.sub('"', "''", output)
+      output = re.sub('[?<>]', '_', output)
+
     result = EvaluatorAtom(output, False if evaluation_count == 0 else True)
 
     if self.debug:
@@ -1493,6 +1508,9 @@ class TitleFormatter:
 
     if resolved is None or resolved is False:
       return None
+
+    if self.for_filename:
+      resolved = re.sub('[\\\\/:|]', '-', resolved)
 
     return EvaluatorAtom(resolved, True)
 
