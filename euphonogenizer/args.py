@@ -37,7 +37,14 @@ copy_cmd_parser.add_argument('--dry-run',
     dest = 'dry_run',
     help = "don't actually copy anything, just show what would happen",
 )
-parser.set_defaults(dry_run=False)
+copy_cmd_parser.set_defaults(dry_run=False)
+
+copy_cmd_parser.add_argument('--write-mtags',
+    action = 'store_true',
+    dest = 'write_mtags',
+    help = 'write a new M-TAGS file in each leaf directory created',
+)
+copy_cmd_parser.set_defaults(write_mtags=False)
 
 list_cmd_parser = cmd_parser.add_parser('list',
     help = 'print out all found tracks',

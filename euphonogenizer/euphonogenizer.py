@@ -14,7 +14,10 @@ from common import dbg, err, unicwd, uniprint, unistr
 
 
 # TODO(dremelofdeath): Make this whole block a single class.
-titleformatter = titleformat.TitleFormatter(args.case_sensitive, args.magic)
+titleformatter = titleformat.TitleFormatter(
+    args.case_sensitive, args.magic, for_filename=False)
+fileformatter = titleformat.TitleFormatter(
+    args.case_sensitive, args.magic, for_filename=True)
 
 unique_output = set()
 
@@ -35,10 +38,12 @@ def is_static_pattern(pattern):
 
 
 class LimitReachedException(Exception):
-  pass
+  def __init__(self, message="Limit reached", visited_dirs=None):
+    super(LimitReachedException, self).__init__(message)
+    self.visited_dirs = visited_dirs
 
 
-class TrackCommand:
+class TrackCommand(object):
   def __init__(self):
     self.records_processed = 0
 
@@ -47,13 +52,18 @@ class TrackCommand:
 
   def run(self):
     try:
-      self.records_processed = 0
-      for dirpath, dirnames, filenames in os.walk(unicwd()):
-        for tagsfile in [each for each in filenames if each == args.tagsfile]:
-          tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
-          self.handle_tags(dirpath, tags)
-    except LimitReachedException:
-      pass
+      return self.do_run()
+    except LimitReachedException as e:
+      return e.visited_dirs
+
+  def do_run(self):
+    self.records_processed = 0
+    visited_dirs = {}
+    for dirpath, dirnames, filenames in os.walk(unicwd()):
+      for tagsfile in [each for each in filenames if each == args.tagsfile]:
+        tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
+        self.handle_tags(dirpath, tags, visited_dirs)
+    return visited_dirs
 
 
 class ListCommand(TrackCommand):
@@ -80,7 +90,7 @@ class ListCommand(TrackCommand):
     else:
       print_output(formatted)
 
-  def handle_tags(self, dirpath, tags):
+  def handle_tags(self, dirpath, tags, visited_dirs):
     startswith = False
     track_params = {}
     if args.startswith:
@@ -97,37 +107,59 @@ class ListCommand(TrackCommand):
         track_params['containsstatic'] = True
     for track in tags.tracks():
       if self.records_processed == args.limit:
-        raise LimitReachedException()
+        raise LimitReachedException(visited_dirs=visited_dirs)
       self.handle_track(track, **track_params)
       self.records_processed += 1
 
 
 class CopyCommand(TrackCommand):
-  def handle_track(self, dirpath, track, **kwargs):
+  def handle_track(self, dirpath, track, visited_dirs, **kwargs):
     track_filename = unistr(track.get('@'))
     u_dirpath = unistr(dirpath)
     u_track_filename = unistr(track_filename)
     src = os.path.join(u_dirpath, u_track_filename)
-    dst = titleformatter.format(track, args.to)
+    dst = fileformatter.format(track, args.to)
+    dirname, basename = os.path.split(dst)
+
+    if args.write_mtags:
+      if dirname not in visited_dirs:
+        visited_dirs[dirname] = []
+      visited_dirs[dirname].append((basename, track))
+
     if os.path.isfile(dst):
       uniprint('file already exists: ' + dst)
     else:
       uniprint(dst)
-      if not args.dry_run:
-        if os.path.isfile(src):
+      if os.path.isfile(src):
+        if not args.dry_run:
           try:
-            dirname = os.path.dirname(dst)
             os.makedirs(dirname)
           except OSError:
             pass
+
           shutil.copy2(src, dst)
 
-  def handle_tags(self, dirpath, tags):
+  def handle_tags(self, dirpath, tags, visited_dirs):
     for track in tags.tracks():
       if self.records_processed == args.limit:
-        raise LimitReachedException()
-      self.handle_track(dirpath, track)
+        raise LimitReachedException(visited_dirs=visited_dirs)
+      self.handle_track(dirpath, track, visited_dirs)
       self.records_processed += 1
+
+  def run(self):
+    visited_dirs = super(CopyCommand, self).run()
+    if args.write_mtags:
+      for dirname, trackfiles in visited_dirs.iteritems():
+        pending_mtags = []
+        for trackfile in trackfiles:
+          basename = trackfile[0]
+          trackinfo = trackfile[1].copy()
+          trackinfo['@'] = basename
+          pending_mtags.append(trackinfo)
+        mtagsfile = mtags.TagsFile(pending_mtags)
+        mtags_dst = os.path.join(dirname, args.tagsfile)
+        uniprint(mtags_dst)
+        mtagsfile.write(mtags_dst)
 
 
 def main():

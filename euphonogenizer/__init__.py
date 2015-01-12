@@ -6,6 +6,9 @@
 #
 # Insert license information here.
 
+from __future__ import unicode_literals
+
+
 __author__ = 'Zachary Murray'
 __copyright__ = 'Copyright (C) 2014 Zachary Murray'
 __license__ = 'TBD'

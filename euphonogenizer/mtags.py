@@ -1,40 +1,19 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import codecs
 import simplejson
 import sys
 
 
-class TrackListing:
-  def __init__(self, dict_obj):
-    self._dict_obj = dict_obj
-
-  def __contains__(self, key):
-    return key in self._dict_obj
-
-  def get(self, key):
-    return self._dict_obj.get(key)
-
-
-class PrintableTrackListing:
-  def __init__(self, track_listing):
-    self.track_listing = track_listing
-
-  def __contains__(self, key):
-    return key in self.track_listing
-
-  def get(self, key):
-    track_string = self.track_listing.get(key)
-    if track_string is None:
-      return None
-    return track_string.encode(sys.stdout.encoding, errors='replace')
-
-
 class TagsFile:
-  def __init__(self, filename):
-    with open(filename) as tags:
-      tagsjson = simplejson.load(tags)
-      self._process_saturated_tags(tagsjson)
+  def __init__(self, filenameorlist):
+    if isinstance(filenameorlist, list):
+      self._tracks = filenameorlist
+    else:
+      with open(filenameorlist) as tags:
+        tagsjson = simplejson.load(tags)
+        self._process_saturated_tags(tagsjson)
 
   def _process_saturated_tags(self, tagsjson):
     self._tracks = []
@@ -52,14 +31,29 @@ class TagsFile:
 
   def tracks(self):
     for each in self._tracks:
-      yield TrackListing(each)
+      yield each
 
-  def printable_tracks(self):
-    for each in self.tracks():
-      yield PrintableTrackListing(each)
+  def desaturate(self):
+    desaturated = []
+    if self._tracks:
+      last_saturated_tags = {}
+      for track in self._tracks:
+        current_desaturated = {}
+        for tag_field, value in track.iteritems():
+          if tag_field in last_saturated_tags:
+            if value != last_saturated_tags[tag_field]:
+              current_desaturated[tag_field] = value
+          else:
+            current_desaturated[tag_field] = value
+        for tag_field, value in last_saturated_tags.iteritems():
+          if tag_field not in track:
+            current_desaturated[tag_field] = []
+        last_saturated_tags = track
+        desaturated.append(current_desaturated)
+    return desaturated
 
-  def both_tracks(self):
-    for each in self._tracks:
-      current_track = TrackListing(each)
-      yield (current_track, PrintableTrackListing(current_track))
-
+  def write(self, filename):
+    with codecs.open(filename, 'w', encoding='utf-8-sig') as fp:
+      simplejson.dump(self.desaturate(), fp,
+          sort_keys=True, indent=3, separators=(',', ' : '))
+      fp.write('\n')
