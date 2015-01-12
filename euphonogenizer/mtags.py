@@ -9,14 +9,14 @@ import sys
 class TagsFile:
   def __init__(self, filenameorlist):
     if isinstance(filenameorlist, list):
-      self._tracks = filenameorlist
+      self.tracks = filenameorlist
     else:
       with open(filenameorlist) as tags:
         tagsjson = simplejson.load(tags)
         self._process_saturated_tags(tagsjson)
 
   def _process_saturated_tags(self, tagsjson):
-    self._tracks = []
+    self.tracks = []
     saturated_tags = {}
 
     for track in tagsjson:
@@ -27,17 +27,13 @@ class TagsFile:
         else:
           saturated_tags[tag_field] = value
 
-      self._tracks.append(saturated_tags.copy())
-
-  def tracks(self):
-    for each in self._tracks:
-      yield each
+      self.tracks.append(saturated_tags.copy())
 
   def desaturate(self):
     desaturated = []
-    if self._tracks:
+    if self.tracks:
       last_saturated_tags = {}
-      for track in self._tracks:
+      for track in self.tracks:
         current_desaturated = {}
         for tag_field, value in track.iteritems():
           if tag_field in last_saturated_tags:

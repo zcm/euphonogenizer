@@ -2,7 +2,9 @@
 # -*- coding: utf-8 -*-
 # vim:ts=2:sw=2:et:ai
 
+import glob
 import os
+import re
 import shutil
 import sys
 
@@ -13,28 +15,71 @@ from args import args, parser
 from common import dbg, err, unicwd, uniprint, unistr
 
 
-# TODO(dremelofdeath): Make this whole block a single class.
 titleformatter = titleformat.TitleFormatter(
     args.case_sensitive, args.magic, for_filename=False)
 fileformatter = titleformat.TitleFormatter(
     args.case_sensitive, args.magic, for_filename=True)
 
 unique_output = set()
-
-def really_print_output(output):
-  print(output.encode(sys.stdout.encoding, errors='replace'))
+cover_dirs = set()
 
 def print_output(output):
   if args.unique:
     if output not in unique_output:
       unique_output.add(output)
-      really_print_output(output)
+      uniprint(output)
   else:
-    really_print_output(output)
+    uniprint(output)
 
 def is_static_pattern(pattern):
   formatted = titleformatter.format({}, pattern)
   return pattern == formatted
+
+escape_glob_dict = {
+    '[': '[[]',
+    ']': '[]]',
+    '*': '[*]',
+    '?': '[?]',
+}
+
+escape_glob_rc = re.compile('|'.join(map(re.escape, escape_glob_dict)))
+
+def escape_glob(path):
+  return escape_glob_rc.sub(lambda m: escape_glob_dict[m.group(0)], path)
+
+def find_cover_art(dirname, dstpath, track):
+  if args.include_covers and dirname not in cover_dirs:
+    for each in args.include_covers:
+      cover_file = os.path.join(dirname, titleformatter.format(track, each))
+      cover_glob = glob.glob(escape_glob(cover_file))
+      if cover_glob and os.path.isfile(cover_glob[0]):
+        found_cover = cover_glob[0]
+        # Perhaps a bit of a hack to get the metadata formated properly...
+        cover_track = track.copy()
+        cover_track['@'] = found_cover
+        ext = found_cover.split('.')[-1]
+        dst = fileformatter.format(cover_track, args.cover_name) + '.' + ext
+        dst = os.path.join(dstpath, dst)
+        cover_dirs.add(dirname)
+        return (found_cover, dst)
+    if not args.per_track_cover_search:
+      cover_dirs.add(dirname)
+
+def create_dirs_and_copy(dirname, src, dst):
+  if os.path.isfile(dst):
+    if not args.quiet:
+      uniprint('file already exists: ' + dst)
+  else:
+    if not args.quiet:
+      uniprint(dst)
+    if os.path.isfile(src):
+      if not args.dry_run:
+        try:
+          os.makedirs(dirname)
+        except OSError:
+          pass
+
+        shutil.copy2(src, dst)
 
 
 class LimitReachedException(Exception):
@@ -105,7 +150,7 @@ class ListCommand(TrackCommand):
       track_params['contains'] = args.contains
       if is_static_pattern(args.contains):
         track_params['containsstatic'] = True
-    for track in tags.tracks():
+    for track in tags.tracks:
       if self.records_processed == args.limit:
         raise LimitReachedException(visited_dirs=visited_dirs)
       self.handle_track(track, **track_params)
@@ -121,26 +166,22 @@ class CopyCommand(TrackCommand):
     dst = fileformatter.format(track, args.to)
     dirname, basename = os.path.split(dst)
 
+    cover = find_cover_art(dirpath, dirname, track)
+
+    if cover:
+      coversrc = cover[0]
+      coverdst = cover[1]
+      create_dirs_and_copy(dirname, coversrc, coverdst)
+
     if args.write_mtags:
       if dirname not in visited_dirs:
         visited_dirs[dirname] = []
       visited_dirs[dirname].append((basename, track))
 
-    if os.path.isfile(dst):
-      uniprint('file already exists: ' + dst)
-    else:
-      uniprint(dst)
-      if os.path.isfile(src):
-        if not args.dry_run:
-          try:
-            os.makedirs(dirname)
-          except OSError:
-            pass
-
-          shutil.copy2(src, dst)
+    create_dirs_and_copy(dirname, src, dst)
 
   def handle_tags(self, dirpath, tags, visited_dirs):
-    for track in tags.tracks():
+    for track in tags.tracks:
       if self.records_processed == args.limit:
         raise LimitReachedException(visited_dirs=visited_dirs)
       self.handle_track(dirpath, track, visited_dirs)
@@ -158,7 +199,8 @@ class CopyCommand(TrackCommand):
           pending_mtags.append(trackinfo)
         mtagsfile = mtags.TagsFile(pending_mtags)
         mtags_dst = os.path.join(dirname, args.tagsfile)
-        uniprint(mtags_dst)
+        if not args.quiet:
+          uniprint(mtags_dst)
         mtagsfile.write(mtags_dst)
 
 
