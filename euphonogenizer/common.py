@@ -22,7 +22,10 @@ def unicwd():
   return os.getcwd()
 
 def uniprint(message):
-  print(message.encode(sys.stdout.encoding, errors='replace'))
+  if sys.stdout.encoding:
+    print(message.encode(sys.stdout.encoding, errors='replace'))
+  else:
+    print(message.encode('ascii', errors='replace'))
 
 def unistr(s):
   if sys.version_info[0] < 3:
