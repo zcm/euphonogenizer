@@ -55,5 +55,5 @@ class TagsFile:
   def write(self, filename):
     with codecs.open(filename, 'w', encoding='utf-8-sig') as fp:
       simplejson.dump(self.desaturate(), fp,
-          sort_keys=True, indent=3, separators=(',', ' : '))
+          ensure_ascii=False, sort_keys=True, indent=3, separators=(',', ' : '))
       fp.write('\n')
