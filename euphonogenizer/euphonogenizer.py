@@ -163,7 +163,7 @@ class CopyCommand(TrackCommand):
     u_dirpath = unistr(dirpath)
     u_track_filename = unistr(track_filename)
     src = os.path.join(u_dirpath, u_track_filename)
-    dst = fileformatter.format(track, args.to)
+    dst = fileformatter.format(track, args.to + '.$ext(%filename_ext%)')
     dirname, basename = os.path.split(dst)
 
     cover = find_cover_art(dirpath, dirname, track)
