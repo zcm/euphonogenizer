@@ -161,6 +161,13 @@ copy_cmd_parser.add_argument('-q', '--quiet',
 )
 copy_cmd_parser.set_defaults(quiet=False)
 
+copy_cmd_parser.add_argument('--no-skip-cue',
+    action='store_false',
+    dest='skip_cue',
+    help='process cuesheets in M-TAGS even if other non-cue files are present',
+)
+copy_cmd_parser.set_defaults(skip_cue=True)
+
 list_cmd_parser=cmd_parser.add_parser('list',
     help='print out all found tracks',
     parents=[shared_cmd_parser],

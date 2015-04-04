@@ -160,6 +160,11 @@ class ListCommand(TrackCommand):
 class CopyCommand(TrackCommand):
   def handle_track(self, dirpath, track, visited_dirs, **kwargs):
     track_filename = unistr(track.get('@'))
+
+    if args.skip_cue:
+      if '.cue|' in track_filename:
+        return
+
     u_dirpath = unistr(dirpath)
     u_track_filename = unistr(track_filename)
     src = os.path.join(u_dirpath, u_track_filename)
