@@ -76,20 +76,23 @@ __aggressive_cover_patterns = [
     '%artist% - %album%.jpeg',
     '%artist% - %album%.png',
     'folder*.jpg',
-    'FOLDER*.jpg',
 ]
 
 
-def RequireOtherArgument(other_argument):
+def RequireOtherArgument(other_argument, errmsg=None):
   class RequireOtherArgument_Action(argparse.Action):
     arg = other_argument
+    err = errmsg
 
     def __call__(self, parser, args, values, option_string=None):
       if not getattr(args, self.arg):
-        if option_string:
-          parser.error(option_string + ' requires other option --' + self.arg)
+        if self.err:
+          parser.error(err)
         else:
-          parser.error('positional option requires other option --' + self.arg)
+          if option_string:
+            parser.error(option_string + ' requires other option --' + self.arg)
+          else:
+            parser.error('positional option requires other option --' + self.arg)
       else:
         setattr(args, self.dest, values)
 
@@ -109,9 +112,65 @@ shared_cmd_parser.add_argument('--limit',
     metavar='INT',
 )
 
+cover_parser = argparse.ArgumentParser(add_help=False)
+
+cover_group = cover_parser.add_mutually_exclusive_group()
+
+cover_group.add_argument('--include-covers',
+    dest='include_covers',
+    nargs='+',
+    help='patterns to copy front cover art for each tag file found',
+    metavar='PATTERN',
+)
+
+cover_group.add_argument('--include-covers-default',
+    action='store_const',
+    dest='include_covers',
+    const=__foobar2000_default_cover_patterns,
+    help='same as --include-covers, but use the foobar2000 default patterns',
+)
+
+cover_group.add_argument('--include-covers-aggressive',
+    action='store_const',
+    dest='include_covers',
+    const=__aggressive_cover_patterns,
+    help='same as --include-covers, but aggressively find cover art to copy',
+)
+
+cover_group.set_defaults(include_covers=False)
+
+cover_group.add_argument('--per-track-cover-search',
+    action='store_true',
+    dest='per_track_cover_search',
+    help='aggressively search each track for cover art (EXTREMELY SLOW!)',
+)
+cover_group.set_defaults(per_track_cover_search=False)
+
+filter_parser = argparse.ArgumentParser(add_help=False)
+
+filter_group = filter_parser.add_mutually_exclusive_group()
+
+filter_group.add_argument('--startswith',
+    default=False,
+    help='display only output that starts with the specified pattern',
+    metavar='PATTERN',
+)
+
+filter_group.add_argument('--equals',
+    default=False,
+    help='display only output that matches the specified pattern exactly',
+    metavar='PATTERN',
+)
+
+filter_group.add_argument('--contains',
+    default=False,
+    help='display only output that contains the specified pattern',
+    metavar='PATTERN',
+)
+
 copy_cmd_parser=cmd_parser.add_parser('copy',
     help='copy all referenced files found in metadata',
-    parents=[shared_cmd_parser],
+    parents=[shared_cmd_parser, cover_parser],
 )
 
 copy_cmd_parser.add_argument('--to',
@@ -134,44 +193,12 @@ copy_cmd_parser.add_argument('--write-mtags',
 )
 copy_cmd_parser.set_defaults(write_mtags=False)
 
-copy_cmd_cover_search=copy_cmd_parser.add_mutually_exclusive_group()
-
-copy_cmd_cover_search.add_argument('--include-covers',
-    dest='include_covers',
-    nargs='+',
-    help='patterns to copy front cover art for each tag file found',
-    metavar='PATTERN',
-)
-
-copy_cmd_cover_search.add_argument('--include-covers-default',
-    action='store_const',
-    dest='include_covers',
-    const=__foobar2000_default_cover_patterns,
-    help='same as --include-covers, but use the foobar2000 default patterns',
-)
-
-copy_cmd_cover_search.add_argument('--include-covers-aggressive',
-    action='store_const',
-    dest='include_covers',
-    const=__aggressive_cover_patterns,
-    help='same as --include-covers, but aggressively find cover art to copy',
-)
-
-copy_cmd_parser.set_defaults(include_covers=False)
-
 copy_cmd_parser.add_argument('--cover-name',
     dest='cover_name',
     default='front',
     help='filename of the found cover art, without extension (default: front)',
     metavar='NAME',
 )
-
-copy_cmd_parser.add_argument('--per-track-cover-search',
-    action='store_true',
-    dest='per_track_cover_search',
-    help='aggressively search each track for cover art (EXTREMELY SLOW!)',
-)
-copy_cmd_parser.set_defaults(per_track_cover_search=False)
 
 copy_cmd_parser.add_argument('-q', '--quiet',
     action='store_true',
@@ -187,34 +214,32 @@ copy_cmd_parser.add_argument('--no-skip-cue',
 )
 copy_cmd_parser.set_defaults(skip_cue=True)
 
-list_cmd_parser=cmd_parser.add_parser('list',
+findcovers_cmd_parser = cmd_parser.add_parser('findcovers',
+    help='find covers for tracks based on patterns',
+    parents=[shared_cmd_parser, cover_parser, filter_parser],
+)
+
+findcovers_cmd_parser.add_argument('--filter-value',
+    default=False,
+    help='pattern to use when using filter options',
+    metavar='PATTERN',
+)
+
+findcovers_cmd_parser.add_argument('--explain',
+    action='store_true',
+    dest='explain',
+    help='verbosely explain the cover art search as it is happening',
+)
+findcovers_cmd_parser.set_defaults(explain=False)
+
+list_cmd_parser = cmd_parser.add_parser('list',
     help='print out all found tracks',
-    parents=[shared_cmd_parser],
+    parents=[shared_cmd_parser, filter_parser],
 )
 
 list_cmd_parser.add_argument('--display',
     default='%artist% - %title%',
     help='pattern used to format output when listing tracks',
-    metavar='PATTERN',
-)
-
-list_cmd_output_filter=list_cmd_parser.add_mutually_exclusive_group()
-
-list_cmd_output_filter.add_argument('--startswith',
-    default=False,
-    help='display only output that starts with the specified pattern',
-    metavar='PATTERN',
-)
-
-list_cmd_output_filter.add_argument('--equals',
-    default=False,
-    help='display only output that matches the specified pattern exactly',
-    metavar='PATTERN',
-)
-
-list_cmd_output_filter.add_argument('--contains',
-    default=False,
-    help='display only output that contains the specified pattern',
     metavar='PATTERN',
 )
 
