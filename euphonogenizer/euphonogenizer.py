@@ -33,10 +33,17 @@ def handle_group_uniprint(output, group):
   else:
     uniprint(output)
 
-def print_or_defer_output(output, group):
+def print_or_defer_output(output, group=None):
   if args.unique:
-    if output not in unique_output:
-      unique_output.add(output)
+    unique_key = output
+    if group is not None:
+      # Unique only applies within groups -- this is to prevent unexpected
+      # behavior when output lines have the same output but are in different
+      # groups (for example, when two tracks have the same name but are on
+      # differently named albums).
+      unique_key = group + output
+    if unique_key not in unique_output:
+      unique_output.add(unique_key)
       handle_group_uniprint(output, group)
   else:
     handle_group_uniprint(output, group)
