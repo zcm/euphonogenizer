@@ -79,6 +79,23 @@ __aggressive_cover_patterns = [
     'FOLDER*.jpg',
 ]
 
+
+def RequireOtherArgument(other_argument):
+  class RequireOtherArgument_Action(argparse.Action):
+    arg = other_argument
+
+    def __call__(self, parser, args, values, option_string=None):
+      if not getattr(args, self.arg):
+        if option_string:
+          parser.error(option_string + ' requires other option --' + self.arg)
+        else:
+          parser.error('positional option requires other option --' + self.arg)
+      else:
+        setattr(args, self.dest, values)
+
+  return RequireOtherArgument_Action
+
+
 parser = argparse.ArgumentParser(prog=progname, description=desc)
 
 cmd_parser = parser.add_subparsers(title='supported operations', dest='cmd')
@@ -89,6 +106,7 @@ shared_cmd_parser.add_argument('--limit',
     default=-1,
     help='stop processing records after the specified number of tracks',
     type=int,
+    metavar='INT',
 )
 
 copy_cmd_parser=cmd_parser.add_parser('copy',
@@ -99,6 +117,7 @@ copy_cmd_parser=cmd_parser.add_parser('copy',
 copy_cmd_parser.add_argument('--to',
     help='pattern that specifies the destination for file operations',
     required=True,
+    metavar='PATTERN',
 )
 
 copy_cmd_parser.add_argument('--dry-run',
@@ -204,6 +223,26 @@ list_cmd_parser.add_argument('--unique',
     default=False,
     help='only print each uniquely formatted line once',
 )
+
+list_cmd_parser.add_argument('--groupby',
+    default=False,
+    help='group the output by the specified prefix pattern',
+    metavar='PATTERN',
+)
+
+list_cmd_parser.add_argument('--groupby-indent',
+    default=2,
+    help='number of spaces to use for indent when printing grouped items',
+    type=int,
+    metavar='INT',
+)
+
+list_cmd_parser.add_argument('--group-startswith',
+    action=RequireOtherArgument('groupby'),
+    help='display only output whose group starts with the specified pattern',
+    metavar='PATTERN',
+)
+
 
 parser.add_argument('--tagsfile',
     default='!.tags',

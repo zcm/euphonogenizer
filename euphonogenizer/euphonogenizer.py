@@ -21,15 +21,36 @@ fileformatter = titleformat.TitleFormatter(
     args.case_sensitive, args.magic, for_filename=True)
 
 unique_output = set()
+groupby_output = {}
 cover_dirs = set()
 
-def print_output(output):
+def handle_group_uniprint(output, group):
+  if group:
+    if group not in groupby_output:
+      groupby_output[group] = [output]
+    else:
+      groupby_output[group].append(output)
+  else:
+    uniprint(output)
+
+def print_or_defer_output(output, group):
   if args.unique:
     if output not in unique_output:
       unique_output.add(output)
-      uniprint(output)
+      handle_group_uniprint(output, group)
   else:
-    uniprint(output)
+    handle_group_uniprint(output, group)
+
+def print_deferred_output():
+  if args.groupby:
+    first = True
+    for key in groupby_output:
+      if not first:
+        uniprint('')
+      uniprint(key + ':')
+      for each in groupby_output[key]:
+        uniprint(' ' * args.groupby_indent + each)
+      first = False
 
 def is_static_pattern(pattern):
   formatted = titleformatter.format({}, pattern)
@@ -96,48 +117,68 @@ class TrackCommand(object):
     pass
 
   def run(self):
+    visited_dirs = None
+
     try:
-      return self.do_run()
+      visited_dirs = self.do_run()
     except LimitReachedException as e:
-      return e.visited_dirs
+      visited_dirs = e.visited_dirs
+
+    print_deferred_output()
+    return visited_dirs
 
   def do_run(self):
     self.records_processed = 0
     visited_dirs = {}
+
     for dirpath, dirnames, filenames in os.walk(unicwd()):
       for tagsfile in [each for each in filenames if each == args.tagsfile]:
         tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
         self.handle_tags(dirpath, tags, visited_dirs)
+
     return visited_dirs
 
 
 class ListCommand(TrackCommand):
+  def static_fmt(self, track, field, **kwargs):
+    if field in kwargs:
+      value = kwargs[field]
+      staticfield = field + 'static'
+      if staticfield not in kwargs or not kwargs[staticfield]:
+        value = titleformatter.format(track, value)
+      return value
+
   def handle_track(self, track, **kwargs):
     formatted = titleformatter.format(track, args.display)
+    group = None
+    if args.groupby:
+      group = titleformatter.format(track, args.groupby)
+      if 'group_startswith' in kwargs:
+        group_startswith = self.static_fmt(track, 'group_startswith', **kwargs)
+      if not group.startswith(group_startswith):
+        return
     if 'startswith' in kwargs:
-      startswith = kwargs['startswith']
-      if 'startswithstatic' not in kwargs or not kwargs['startswithstatic']:
-        startswith = titleformatter.format(track, startswith)
+      startswith = self.static_fmt(track, 'startswith', **kwargs)
       if formatted.startswith(startswith):
-        print_output(formatted)
+        print_or_defer_output(formatted, group)
     elif 'equals' in kwargs:
-      equals = kwargs['equals']
-      if 'equalsstatic' not in kwargs or not kwargs['equalsstatic']:
-        equals = titleformatter.format(track, equals)
+      equals = self.static_fmt(track, 'equals', **kwargs)
       if formatted == equals:
-        print_output(formatted)
+        print_or_defer_output(formatted, group)
     elif 'contains' in kwargs:
-      contains = kwargs['contains']
-      if 'containsstatic' not in kwargs or not kwargs['contains']:
-        contains = titleformatter.format(track, contains)
+      contains = self.static_fmt(track, 'contains', **kwargs)
       if contains in formatted:
-        print_output(formatted)
+        print_or_defer_output(formatted, group)
     else:
-      print_output(formatted)
+      print_or_defer_output(formatted, group)
 
   def handle_tags(self, dirpath, tags, visited_dirs):
     startswith = False
     track_params = {}
+    if args.group_startswith:
+      track_params['group_startswith'] = args.group_startswith
+      if is_static_pattern(args.group_startswith):
+        track_params['group_startswithstatic'] = True
     if args.startswith:
       track_params['startswith'] = args.startswith
       if is_static_pattern(args.startswith):
