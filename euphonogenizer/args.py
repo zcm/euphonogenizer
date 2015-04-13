@@ -288,5 +288,3 @@ parser.add_argument('--disable-magic',
 )
 parser.set_defaults(magic=True)
 
-args = parser.parse_args()
-
