@@ -6,6 +6,7 @@ import glob
 import os
 import re
 import shutil
+import stat
 import sys
 
 import mtags
@@ -13,6 +14,17 @@ import titleformat
 
 from args import parser
 from common import dbg, err, unicwd, uniprint, unistr
+from mutagen import File
+from mutagen.id3 import ID3FileType
+from mutagen.easyid3 import EasyID3FileType
+from mutagen.easymp4 import EasyMP4
+from mutagen.mp3 import EasyMP3
+from mutagen.mp3 import MP3
+from mutagen.mp4 import MP4
+from mutagen.trueaudio import EasyTrueAudio
+from mutagen.trueaudio import TrueAudio
+from mutagen._compat import iteritems
+from retrying import retry
 
 escape_glob_dict = {
     '[': '[[]',
@@ -24,6 +36,9 @@ escape_glob_rc = re.compile('|'.join(map(re.escape, escape_glob_dict)))
 
 def escape_glob(path):
   return escape_glob_rc.sub(lambda m: escape_glob_dict[m.group(0)], path)
+
+def retry_if_ioerror(exception):
+  return isinstance(exception, IOError)
 
 
 class DefaultConfigurable(object):
@@ -154,10 +169,204 @@ class CoverArtFinder(DefaultConfigurable):
     return retval
 
 
+class MutagenFileMetadataHandler(DefaultConfigurable):
+  # TODO(dremelofdeath): See if Foobar does this with filetypes other than FLAC
+  # as well.
+  known_foobar_keys = {
+      # Foobar, I'm guessing, treats these fields as 'comment'-ish fields and
+      # writes them first. From what I can gather, the comment-ish fields that
+      # appear first are determined to be the 'real' fields, and if there are
+      # others that have the same name as Foobar's internal name, they will come
+      # afterwards.
+      "ALBUM ARTIST": "ALBUMARTIST",
+      # Foobar writes these fields right before ReplayGain fields, and uses its
+      # proximity to them in order to determine which one is the "real" field,
+      # in the event that there are multiple as far as I can tell. This is
+      # basically the complete opposite of the previous group of fields, since
+      # the ReplayGain fields are written last. Emulating this behavior is going
+      # to be a nightmare...
+      "PUBLISHER": "ORGANIZATION",
+      "TOTALDISCS": "DISCTOTAL",
+      "TOTALTRACKS": "TRACKTOTAL",
+  }
+
+  def __init__(self, args=None, titleformatter=None, fileformatter=None):
+    super(MutagenFileMetadataHandler, self).__init__(
+        args, titleformatter, fileformatter)
+    # I know this looks stupid, but we really only need this submodule if we are
+    # going to be processing file metadata. Same with the ID3 configuration.
+    import tagext
+
+    tagext.configure_id3_ext()
+
+  def handle_metadata(self, filename, track, is_new_file):
+    if self.args.write_file_metadata:
+      self.really_handle_metadata(filename, track, is_new_file)
+
+  def really_handle_metadata(self, filename, track, is_new_file):
+    mutagen_file = File(filename, easy=True)
+    changed = is_new_file or self.has_metadata_changed(mutagen_file, track)
+
+    if is_new_file or changed:
+      try:
+        if not self.args.dry_run:
+          self.maybe_clear_existing_metadata(
+              filename, mutagen_file, is_new_file)
+
+        for key, value in iteritems(track):
+          if key == '@':
+            continue
+          mutagen_file[self.marshal_mutagen_key(mutagen_file, key)] = value
+
+        if not self.args.dry_run:
+          self.write_metadata(filename, mutagen_file, is_new_file)
+      except UnwritableMetadataException:
+        if not self.args.quiet:
+          if self.args.even_if_readonly:
+            # We shouldn't be throwing this exception if we're forcing the
+            # write with --even-if-readonly.
+            raise InvalidProcessorStateException(
+                'Failed to write metadata for ' + filename)
+          else:
+            uniprint("can't write metadata for readonly file " + filename)
+            uniprint(
+                '  (use --even-if-readonly to force writing readonly files)')
+
+
+  @classmethod
+  def marshal_mutagen_key(cls, mutagen_file, key):
+    """
+    Translates from Foobar2000's label of the metadata frame to Mutagen's
+    expected format. This varies based on the type of the file that you are
+    trying to write (in particular, ID3 is complicated).
+    """
+    if isinstance(mutagen_file, (
+        ID3FileType, EasyID3FileType, EasyMP4, EasyMP3, MP3, MP4,
+        EasyTrueAudio, TrueAudio)):
+      # These types are weird, so we're just going to return a lowercased key.
+      return key.lower()
+
+    # We will temporarily deal with uppercase IDs. We might marshal back to
+    # lowercase if we need to. (This is probably not the case...)
+    upperkey = key.upper()
+
+    # If this is just a known thing (known to me, at least) that Foobar does to
+    # metadata strings in the way it handles them, return that thing.
+    if upperkey in cls.known_foobar_keys:
+      # TODO(dremelofdeath): Determine if the considered field would be
+      # considered a 'real' field by Foobar in the event there are duplicates of
+      # the internal IDs.
+      return cls.known_foobar_keys[upperkey]
+
+    if upperkey.startswith('REPLAYGAIN_'):
+      return upperkey.lower()
+
+    return upperkey
+
+  def maybe_clear_existing_metadata(self, filename, mutagen_file, is_new_file):
+    self.maybe_force_write(filename, is_new_file, lambda: mutagen_file.delete())
+
+  def has_metadata_changed(self, mutagen_file, track):
+    left_keys = mutagen_file.keys()
+    right_keys = track.keys()
+
+    left_keys_len = len(left_keys)
+    # Note that the '@' field is virtual, so we won't count that.
+    right_keys_len = len(right_keys) - 1
+
+    # If the number of metadata fields if different, the metadata has changed.
+    if left_keys_len != right_keys_len:
+      return True
+
+    marshalled_right_keys = [self.marshal_mutagen_key(mutagen_file, key)
+                             for key in right_keys if key != '@']
+
+    # If any of the fields in the right are not in the left, it's changed.
+    for each in marshalled_right_keys:
+      # Mutagen can lowercase the data and Foobar can still read it.
+      if each not in left_keys and each.lower() not in left_keys:
+        return True
+
+    # If any of the field values have changed (or changed types), it's changed.
+    for key, value in iteritems(track):
+      if key != '@':
+        marshalled_key = self.marshal_mutagen_key(mutagen_file, key)
+        before = mutagen_file[marshalled_key]
+
+        if isinstance(before, (list, tuple)):
+          # Mutagen usually gives us a singleton list.
+          if len(before) == 1:
+            before = before[0]
+            if before != value:
+              # This single field has changed.
+              uniprint('diff: ' + before + ' ==> ' + value)
+              return True
+          else:
+            if isinstance(value, (list, tuple)):
+              if len(before) == len(value):
+                for i, each in enumerate(before):
+                  if each != value[i]:
+                    # The values or order of values have changed.
+                    return True
+              else:
+                # This field has changed types or length.
+                return True
+        else:
+          if before != value:
+            return True
+
+    return False
+
+  def write_metadata(self, filename, mutagen_file, is_new_file):
+    if not is_new_file and not self.args.update_metadata:
+      if not self.args.quiet:
+        uniprint('not writing newer metadata because file exists')
+        uniprint('  (use --update-metadata to write metadata anyway)')
+      return
+
+    self.really_write_metadata(filename, mutagen_file, is_new_file)
+
+  def really_write_metadata(self, filename, mutagen_file, is_new_file):
+    if not is_new_file:
+      if not self.args.quiet:
+        uniprint('updating metadata for: ' + filename)
+
+    self.maybe_force_write(
+        filename, is_new_file, lambda: mutagen_file.save(filename))
+
+  def maybe_force_write(self, filename, is_new_file, forced_write_closure):
+    try:
+      forced_write_closure()
+    except IOError:
+      # This is probably due to the read-only flag being set, so check it.
+      if is_new_file or self.args.even_if_readonly:
+        if not os.access(filename, os.W_OK):
+          # We will just clear the flag temporarily and then set it back.
+          mode = os.stat(filename)[stat.ST_MODE]
+          os.chmod(filename, stat.S_IWRITE)
+          forced_write_closure()
+          os.chmod(filename, mode)
+        else:
+          # Something else bad is happening then.
+          raise
+      else:
+        # We're not going to force it. The file isn't writable, so skip it.
+        raise UnwritableMetadataException(
+            'Metadata unwritable for ' + filename)
+
+
 class LimitReachedException(Exception):
   def __init__(self, message="Limit reached", visited_dirs=None):
     super(LimitReachedException, self).__init__(message)
     self.visited_dirs = visited_dirs
+
+
+class UnwritableMetadataException(Exception):
+  pass
+
+
+class InvalidProcessorStateException(Exception):
+  pass
 
 
 class AutomaticConfiguringCommand(DefaultConfigurable):
@@ -300,6 +509,23 @@ class CoverArtConfigurableCommand(TrackCommand):
     return self._cover_finder
 
 
+class CoverArtFileMetadataConfigurableCommand(CoverArtConfigurableCommand):
+  def __init__(self, args=None, titleformatter=None, fileformatter=None,
+      printer=None, cover_finder=None, metadata_handler=None):
+    super(CoverArtFileMetadataConfigurableCommand, self).__init__(
+        args, titleformatter, fileformatter, printer, cover_finder)
+
+    if metadata_handler is None:
+      metadata_handler = MutagenFileMetadataHandler(
+          self.args, self.titleformatter, self.fileformatter)
+
+    self._metadata_handler = metadata_handler
+
+  @property
+  def metadata_handler(self):
+      return self._metadata_handler
+
+
 class ListCommand(TrackCommand):
   def handle_track(self, track, **kwargs):
     formatted = self.titleformatter.format(track, self.args.display)
@@ -320,9 +546,12 @@ class ListCommand(TrackCommand):
           visited_dirs, lambda: self.handle_track(track, **track_params))
 
 
-class CopyCommand(CoverArtConfigurableCommand):
+class CopyCommand(CoverArtFileMetadataConfigurableCommand):
   def create_dirs_and_copy(self, dirname, src, dst):
+    is_new_file = True
+
     if os.path.isfile(dst):
+      is_new_file = False
       if not self.args.quiet:
         uniprint('file already exists: ' + dst)
     else:
@@ -337,6 +566,8 @@ class CopyCommand(CoverArtConfigurableCommand):
 
           shutil.copy2(src, dst)
 
+    return is_new_file
+
   def handle_cover(self, dirpath, track, dirname):
     cover = self.cover_finder.find_cover_art(dirpath, track, dirname)
 
@@ -344,6 +575,9 @@ class CopyCommand(CoverArtConfigurableCommand):
       coversrc = cover[0]
       coverdst = cover[1]
       self.create_dirs_and_copy(dirname, coversrc, coverdst)
+
+  def handle_file_metadata(self, filename, track, is_new_file):
+    self.metadata_handler.handle_metadata(filename, track, is_new_file)
 
   def handle_track(self, dirpath, track, visited_dirs, **kwargs):
     track_filename = unistr(track.get('@'))
@@ -361,12 +595,14 @@ class CopyCommand(CoverArtConfigurableCommand):
 
     self.handle_cover(dirpath, track, dirname)
 
+    is_new_file = self.create_dirs_and_copy(dirname, src, dst)
+
+    self.handle_file_metadata(dst, track, is_new_file)
+
     if self.args.write_mtags:
       if dirname not in visited_dirs:
         visited_dirs[dirname] = []
       visited_dirs[dirname].append((basename, track))
-
-    self.create_dirs_and_copy(dirname, src, dst)
 
   def handle_tags(self, dirpath, tags, visited_dirs):
     for track in tags.tracks:

@@ -193,6 +193,27 @@ copy_cmd_parser.add_argument('--write-mtags',
 )
 copy_cmd_parser.set_defaults(write_mtags=False)
 
+copy_cmd_parser.add_argument('--write-file-metadata',
+    action='store_true',
+    dest='write_file_metadata',
+    help='write the tags directly to the file being copied',
+)
+copy_cmd_parser.set_defaults(write_file_metadata=False)
+
+copy_cmd_parser.add_argument('--update-metadata',
+    action='store_true',
+    dest='update_metadata',
+    help='write metadata tags to existing files (skipped by default)',
+)
+copy_cmd_parser.set_defaults(update_metadata=False)
+
+copy_cmd_parser.add_argument('--even-if-readonly',
+    action='store_true',
+    dest='even_if_readonly',
+    help='try to update metadata tags even if the existing files are readonly',
+)
+copy_cmd_parser.set_defaults(even_if_readonly=False)
+
 copy_cmd_parser.add_argument('--cover-name',
     dest='cover_name',
     default='front',

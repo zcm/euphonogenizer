@@ -13,7 +13,10 @@ setup(
     author_email = 'dremelofdeath@gmail.com',
     url = 'https://github.com/dremelofdeath/euphonogenizer',
     packages = ['euphonogenizer'],
-    install_requires = ['simplejson>=3.6.5'],
+    install_requires = [
+      'simplejson>=3.6.5',
+      'mutagen>=1.28',
+    ],
     entry_points = {
       'console_scripts': [
         'euphonogenizer = euphonogenizer.euphonogenizer:main',
