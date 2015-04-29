@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 # vim:ts=2:sw=2:et:ai
 
+from __future__ import print_function
+
 import glob
 import os
 import re
@@ -9,11 +11,14 @@ import shutil
 import stat
 import sys
 
+import colorama
+import colorama.ansi
+
 import mtags
 import titleformat
 
 from args import parser
-from common import dbg, err, unicwd, uniprint, unistr
+from common import dbg, err, progname, unicwd, uniprint, unistr
 from mutagen import File
 from mutagen.id3 import ID3FileType
 from mutagen.easyid3 import EasyID3FileType
@@ -24,7 +29,6 @@ from mutagen.mp4 import MP4
 from mutagen.trueaudio import EasyTrueAudio
 from mutagen.trueaudio import TrueAudio
 from mutagen._compat import iteritems
-from retrying import retry
 
 escape_glob_dict = {
     '[': '[[]',
@@ -39,6 +43,24 @@ def escape_glob(path):
 
 def retry_if_ioerror(exception):
   return isinstance(exception, IOError)
+
+
+class LimitReachedException(Exception):
+  def __init__(self, message="Limit reached", visited_dirs=None):
+    super(LimitReachedException, self).__init__(message)
+    self.visited_dirs = visited_dirs
+
+
+class UnwritableMetadataException(Exception):
+  pass
+
+
+class InvalidProcessorStateException(Exception):
+  pass
+
+
+class FileAccessException(Exception):
+  pass
 
 
 class DefaultConfigurable(object):
@@ -65,6 +87,11 @@ class PrintHandler(DefaultConfigurable):
     super(PrintHandler, self).__init__(args, titleformatter, fileformatter)
     self._unique_output = set()
     self._groupby_output = {}
+    self.progress = args and hasattr(args, 'progress') and args.progress
+    self.unique = args and hasattr(args, 'unique') and args.unique
+
+    self.last_jump = 0
+    self.init_ansi()
 
   @property
   def unique_output(self):
@@ -73,6 +100,19 @@ class PrintHandler(DefaultConfigurable):
   @property
   def groupby_output(self):
     return self._groupby_output
+
+  def init_ansi(self):
+    if self.progress:
+      colorama.init()
+
+      uniprint('== ' + progname + ' ==')
+      uniprint('Progress:')
+      uniprint('Current tag:')
+      uniprint('Last file:')
+      uniprint('Status:')
+      uniprint('Track:')
+      uniprint('Album:')
+      uniprint('')
 
   def handle_group_uniprint(self, output, group):
     if group:
@@ -84,7 +124,7 @@ class PrintHandler(DefaultConfigurable):
       uniprint(output)
 
   def print_or_defer_output(self, output, group=None):
-    if self.args and hasattr(self.args, 'unique') and self.args.unique:
+    if self.unique:
       unique_key = output
       if group is not None:
         # Unique only applies within groups -- this is to prevent unexpected
@@ -109,36 +149,177 @@ class PrintHandler(DefaultConfigurable):
           uniprint(' ' * self.args.groupby_indent + each)
         first = False
 
+  def debug(self, text):
+    if not self.progress:
+      dbg(text)
+    else:
+      s = self.jump_to_and_clear_debug()
+      s = s + text + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      uniprint(s, end='')
 
-class CoverArtFinder(DefaultConfigurable):
-  def __init__(self, args, titleformatter, fileformatter):
-    super(CoverArtFinder, self).__init__(args, titleformatter, fileformatter)
+  def update_progress(self, done, total, plural_noun):
+    if self.progress:
+      s = self.jump_to_and_clear_progress()
+      s = s + self.get_completion_output(done, total, plural_noun) + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      uniprint(s, end='')
+
+  def update_current(self, done, total, plural_noun, sumtotal):
+    if self.progress:
+      s = self.jump_to_and_clear_current()
+      s = s + self.get_completion_output(done, total, plural_noun, sumtotal)
+      s = s + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      uniprint(s, end='')
+
+  def update_last_file(self, last_result, long_form=None):
+    if not self.progress:
+      if long_form is None:
+        uniprint(last_result)
+      else:
+        uniprint(last_result + long_form)
+    else:
+      s = self.jump_to_and_clear_last_file()
+      s = s + last_result + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      uniprint(s, end='')
+
+  def get_completion_output(self, done, total, plural_noun, sumtotal=None):
+    s = '%d of %d %s processed (%d%%' % (
+        done, total, plural_noun, done * 100 // total)
+
+    if sumtotal is None:
+      s = s + ')'
+    else:
+      s = s + ' - %d total)' % (sumtotal)
+
+    return s
+
+  def update_status(self, status=None, long_form=None):
+    if not self.progress:
+      if long_form is None:
+        uniprint(status)
+      else:
+        uniprint(status + long_form)
+    else:
+      # Ignore the long form and just set the status.
+      s = self.jump_to_and_clear_status()
+      s = s + status + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      uniprint(s, end='')
+
+  def update_track_and_album(self, track):
+    if self.progress:
+      t_pattern = '%album artist% - %title%'
+      a_pattern = '%album% (%date%)'
+      s = self.jump_to_and_clear_track()
+      s = s + self.titleformatter.format(track, t_pattern) + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      s = s + self.jump_to_and_clear_album()
+      s = s + self.titleformatter.format(track, a_pattern) + os.linesep
+      self.last_jump = self.last_jump - 1
+      s = s + self.undo_last_jump()
+      uniprint(s, end='')
+
+  def jump_to_and_clear_field(self, n):
+    s = self.jump_up_lines(n) + self.forward_to_field() + self.clear_to_end()
+    return s
+
+  def jump_to_and_clear_debug(self):
+    return self.jump_to_and_clear_field(8);
+
+  def jump_to_and_clear_progress(self):
+    return self.jump_to_and_clear_field(7);
+
+  def jump_to_and_clear_current(self):
+    return self.jump_to_and_clear_field(6);
+
+  def jump_to_and_clear_last_file(self):
+    return self.jump_to_and_clear_field(5);
+
+  def jump_to_and_clear_status(self):
+    return self.jump_to_and_clear_field(4)
+
+  def jump_to_and_clear_track(self):
+    return self.jump_to_and_clear_field(3)
+
+  def jump_to_and_clear_album(self):
+    return self.jump_to_and_clear_field(2)
+
+  def jump_up_lines(self, n):
+    self.last_jump = n
+    return colorama.ansi.Cursor.UP(n)
+
+  def jump_down_lines(self, n):
+    self.last_jump = -n
+    return colorama.ansi.Cursor.DOWN(n)
+
+  def undo_last_jump(self):
+    if self.last_jump > 0:
+      return self.jump_down_lines(self.last_jump)
+    elif self.last_jump < 0:
+      return self.jump_up_lines(-self.last_jump)
+
+  def forward_to_field(self):
+    return colorama.ansi.Cursor.FORWARD(13)
+
+  def clear_to_end(self):
+    return colorama.ansi.clear_line(0)
+
+
+class DefaultPrintingConfigurable(DefaultConfigurable):
+  def __init__(self, args, titleformatter, fileformatter, printer=None):
+    super(DefaultPrintingConfigurable, self).__init__(
+        args, titleformatter, fileformatter)
+
+    if printer is None:
+      printer = PrintHandler(self.args, self.titleformatter, self.fileformatter)
+
+    self._printer = printer
+
+  @property
+  def printer(self):
+    return self._printer
+
+
+class CoverArtFinder(DefaultPrintingConfigurable):
+  def __init__(self, args, titleformatter, fileformatter, printer=None):
+    super(CoverArtFinder, self).__init__(
+        args, titleformatter, fileformatter, printer)
     self._cover_dirs = set()
+
+    self.include = hasattr(self.args, 'include_covers') and args.include_covers
+    self.progress = hasattr(args, 'progress') and args.progress
 
   @property
   def cover_dirs(self):
     return self._cover_dirs
 
-  def find_cover_art(self, dirname, track, dstpath=None):
-    if not self.args or not hasattr(self.args, 'include_covers'):
+  def find_cover_art(self, dirname, track, dstpath=None, silent=False):
+    if not self.include:
       # Just don't even bother.
-      return
-    if not self.args.include_covers:
-      # Same here.
       return
 
     retval = None
     explain = hasattr(self.args, 'explain') and self.args.explain
 
     if dirname not in self.cover_dirs:
-      if explain:
-        uniprint('attempting to find cover art for directory:')
-        uniprint('  ' + dirname)
+      if explain or self.progress:
+        if not silent:
+          self.printer.update_status(
+              'Finding cover art', ' for directory: ' + dirname)
       for each in self.args.include_covers:
         cover_file = os.path.join(
             dirname, self.titleformatter.format(track, each))
         cover_glob = glob.glob(escape_glob(cover_file))
-        if explain:
+        if explain and not silent:
           uniprint("  attempting pattern '" + each + "'")
           uniprint('    ==> ' + cover_file)
           if len(cover_glob) > 0:
@@ -169,7 +350,7 @@ class CoverArtFinder(DefaultConfigurable):
     return retval
 
 
-class MutagenFileMetadataHandler(DefaultConfigurable):
+class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
   # TODO(dremelofdeath): See if Foobar does this with filetypes other than FLAC
   # as well.
   known_foobar_keys = {
@@ -190,18 +371,23 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
       "TOTALTRACKS": "TRACKTOTAL",
   }
 
-  def __init__(self, args=None, titleformatter=None, fileformatter=None):
+  def __init__(
+      self, args=None, titleformatter=None, fileformatter=None, printer=None):
     super(MutagenFileMetadataHandler, self).__init__(
-        args, titleformatter, fileformatter)
+        args, titleformatter, fileformatter, printer)
     # I know this looks stupid, but we really only need this submodule if we are
     # going to be processing file metadata. Same with the ID3 configuration.
     import tagext
 
     tagext.configure_id3_ext()
 
-  def handle_metadata(self, filename, track, is_new_file):
+    self.progress = hasattr(args, 'progress') and args.progress
+
+  def handle_metadata(self, filename, track, is_new_file, silent):
     if self.args.write_file_metadata:
-      self.really_handle_metadata(filename, track, is_new_file)
+      if self.progress and not silent:
+        self.printer.update_status('Writing metadata')
+      return self.really_handle_metadata(filename, track, is_new_file)
 
   def really_handle_metadata(self, filename, track, is_new_file):
     mutagen_file = File(filename, easy=True)
@@ -220,6 +406,12 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
 
         if not self.args.dry_run:
           self.write_metadata(filename, mutagen_file, is_new_file)
+          if self.progress:
+            # TODO(dremelofdeath): Gah, I know this shouldn't be here. I'll fix
+            # it later...
+            # Don't check silent. If the metadata has changed, we will stop
+            # fast-forwarding here.
+            self.printer.update_last_file('Success!')
       except UnwritableMetadataException:
         if not self.args.quiet:
           if self.args.even_if_readonly:
@@ -228,9 +420,16 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
             raise InvalidProcessorStateException(
                 'Failed to write metadata for ' + filename)
           else:
-            uniprint("can't write metadata for readonly file " + filename)
-            uniprint(
-                '  (use --even-if-readonly to force writing readonly files)')
+            if self.progress:
+              self.printer.update_last_file(
+                  "Couldn't write metadata -- readonly file"
+                  + " (force with --even-if-readonly)")
+            else:
+              uniprint("Can't write metadata for readonly file " + filename)
+              uniprint(
+                  '  (use --even-if-readonly to force writing readonly files)')
+
+    return changed
 
 
   @classmethod
@@ -299,7 +498,6 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
             before = before[0]
             if before != value:
               # This single field has changed.
-              uniprint('diff: ' + before + ' ==> ' + value)
               return True
           else:
             if isinstance(value, (list, tuple)):
@@ -320,8 +518,13 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
   def write_metadata(self, filename, mutagen_file, is_new_file):
     if not is_new_file and not self.args.update_metadata:
       if not self.args.quiet:
-        uniprint('not writing newer metadata because file exists')
-        uniprint('  (use --update-metadata to write metadata anyway)')
+        if hasattr(self.args, 'progress') and self.args.progress:
+          self.printer.update_last_file(
+              "Didn't write newer metadata; file exists"
+              + ' (use --update-metadata to write anyway)')
+        else:
+          uniprint('Not writing newer metadata because file exists')
+          uniprint('  (use --update-metadata to write metadata anyway)')
       return
 
     self.really_write_metadata(filename, mutagen_file, is_new_file)
@@ -329,7 +532,7 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
   def really_write_metadata(self, filename, mutagen_file, is_new_file):
     if not is_new_file:
       if not self.args.quiet:
-        uniprint('updating metadata for: ' + filename)
+        self.printer.update_status('Updating metadata', ' for: ' + filename)
 
     self.maybe_force_write(
         filename, is_new_file, lambda: mutagen_file.save(filename))
@@ -355,23 +558,9 @@ class MutagenFileMetadataHandler(DefaultConfigurable):
             'Metadata unwritable for ' + filename)
 
 
-class LimitReachedException(Exception):
-  def __init__(self, message="Limit reached", visited_dirs=None):
-    super(LimitReachedException, self).__init__(message)
-    self.visited_dirs = visited_dirs
-
-
-class UnwritableMetadataException(Exception):
-  pass
-
-
-class InvalidProcessorStateException(Exception):
-  pass
-
-
-class AutomaticConfiguringCommand(DefaultConfigurable):
-  def __init__(self, args=None, titleformatter=None, fileformatter=None,
-      printer=None, cover_finder=None):
+class AutomaticConfiguringCommand(DefaultPrintingConfigurable):
+  def __init__(
+      self, args=None, titleformatter=None, fileformatter=None, printer=None):
     # Set defaults for these in case the package is being imported.
     case_sensitive = False
     magic = False
@@ -391,16 +580,7 @@ class AutomaticConfiguringCommand(DefaultConfigurable):
           case_sensitive, magic, for_filename=True)
 
     super(AutomaticConfiguringCommand, self).__init__(
-        args, titleformatter, fileformatter)
-
-    if printer is None:
-      printer = PrintHandler(self.args, self.titleformatter, self.fileformatter)
-
-    self._printer = printer
-
-  @property
-  def printer(self):
-    return self._printer
+        args, titleformatter, fileformatter, printer)
 
 
 class TrackCommand(AutomaticConfiguringCommand):
@@ -409,6 +589,10 @@ class TrackCommand(AutomaticConfiguringCommand):
     super(TrackCommand, self).__init__(
         args, titleformatter, fileformatter, printer)
     self._records_processed = None
+    self.quiet = hasattr(args, 'quiet') and args.quiet
+    self.progress = hasattr(args, 'progress') and args.progress
+    self.total_tags = 0
+    self.tags_done = 0
 
   @property
   def records_processed(self):
@@ -478,12 +662,42 @@ class TrackCommand(AutomaticConfiguringCommand):
     visited_dirs = {}
     tagsname = self.args.tagsfile
 
-    for dirpath, dirnames, filenames in os.walk(unicwd()):
-      for tagsfile in [each for each in filenames if each == tagsname]:
-        tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
-        self.handle_tags(dirpath, tags, visited_dirs)
+    if self.progress:
+      v = {'s': 0}
+      self.handle_all_tags(
+          tagsname,
+          lambda dirpath, dirnames, filenames, all_tags:
+              self._setd(v, 's', v['s'] + len(all_tags)))
+      self.total_tags = v['s']
+      self.on_progress_count_complete()
+
+    self.handle_all_tags(
+        tagsname,
+        lambda dirpath, dirnames, filenames, all_tags:
+            self.handle_each_tag(dirpath, all_tags, visited_dirs))
 
     return visited_dirs
+
+  def _setd(self, d, key, value):
+    d[key] = value
+
+  def on_progress_count_complete(self):
+    pass
+
+  def on_progress_tag_done(self):
+    pass
+
+  def handle_all_tags(self, tagsname, on_tags_found):
+    for dirpath, dirnames, filenames in os.walk(unicwd()):
+      all_tags = [each for each in filenames if each == tagsname]
+      on_tags_found(dirpath, dirnames, filenames, all_tags)
+
+  def handle_each_tag(self, dirpath, all_tags, visited_dirs):
+    for tagsfile in all_tags:
+      tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
+      self.handle_tags(dirpath, tags, visited_dirs)
+      self.tags_done = self.tags_done + 1
+      self.on_progress_tag_done()
 
   def process_record(self, visited_dirs, on_accounting_done):
     if self.args and self.records_processed == self.args.limit:
@@ -500,7 +714,7 @@ class CoverArtConfigurableCommand(TrackCommand):
 
     if cover_finder is None:
       cover_finder = CoverArtFinder(
-          self.args, self.titleformatter, self.fileformatter)
+          self.args, self.titleformatter, self.fileformatter, self.printer)
 
     self._cover_finder = cover_finder
 
@@ -517,7 +731,7 @@ class CoverArtFileMetadataConfigurableCommand(CoverArtConfigurableCommand):
 
     if metadata_handler is None:
       metadata_handler = MutagenFileMetadataHandler(
-          self.args, self.titleformatter, self.fileformatter)
+          self.args, self.titleformatter, self.fileformatter, self.printer)
 
     self._metadata_handler = metadata_handler
 
@@ -547,37 +761,83 @@ class ListCommand(TrackCommand):
 
 
 class CopyCommand(CoverArtFileMetadataConfigurableCommand):
-  def create_dirs_and_copy(self, dirname, src, dst):
+  def __init__(self, args=None, titleformatter=None, fileformatter=None,
+      printer=None, cover_finder=None, metadata_handler=None):
+    super(CopyCommand, self).__init__(args, titleformatter, fileformatter,
+        printer, cover_finder, metadata_handler)
+    self.is_fast_forwarding = self.progress
+
+  def on_progress_count_complete(self):
+    super(CopyCommand, self).on_progress_count_complete()
+    if self.is_fast_forwarding:
+      self.printer.update_status('Fast forwarding...')
+
+  def on_progress_tag_done(self):
+    super(CopyCommand, self).on_progress_tag_done()
+    self.printer.update_progress(
+        self.tags_done, self.total_tags, 'tags')
+
+  def create_dirs_and_copy(self, dirname, src, dst, noun):
     is_new_file = True
 
     if os.path.isfile(dst):
       is_new_file = False
       if not self.args.quiet:
-        uniprint('file already exists: ' + dst)
+        if not self.is_fast_forwarding:
+          self.printer.update_last_file('File already exists', ': ' + dst)
     else:
-      if not self.args.quiet:
+      if not self.quiet and not self.progress:
         uniprint(dst)
       if os.path.isfile(src):
         if not self.args.dry_run:
+          if self.progress:
+            self.printer.update_status('Creating target directory')
           try:
             os.makedirs(dirname)
           except OSError:
             pass
 
+          if self.progress:
+            self.printer.update_status('Copying ' + noun)
+
           shutil.copy2(src, dst)
+      else:
+        if self.progress:
+          uniprint(dst)
+        raise FileAccessException('cannot access file ' + src)
 
     return is_new_file
 
+  def create_dirs_and_copy_if_size_changed(self, dirname, src, dst, noun):
+    srcsize = os.path.getsize(src)
+    dstsize = -1
+
+    try:
+      dstsize = os.path.getsize(dst)
+    except OSError:
+      pass
+
+    if srcsize != dstsize:
+      self.create_dirs_and_copy(dirname, src, dst, noun)
+
   def handle_cover(self, dirpath, track, dirname):
-    cover = self.cover_finder.find_cover_art(dirpath, track, dirname)
+    cover = self.cover_finder.find_cover_art(
+        dirpath, track, dirname, silent=self.is_fast_forwarding)
 
     if cover:
       coversrc = cover[0]
       coverdst = cover[1]
-      self.create_dirs_and_copy(dirname, coversrc, coverdst)
+      if self.is_fast_forwarding:
+        self.create_dirs_and_copy_if_size_changed(
+            dirname, coversrc, coverdst, 'cover art')
+      else:
+        self.create_dirs_and_copy(dirname, coversrc, coverdst, 'cover art')
 
   def handle_file_metadata(self, filename, track, is_new_file):
-    self.metadata_handler.handle_metadata(filename, track, is_new_file)
+    changed = self.metadata_handler.handle_metadata(
+        filename, track, is_new_file, self.is_fast_forwarding)
+    if self.is_fast_forwarding and changed:
+      self.is_fast_forwarding = False
 
   def handle_track(self, dirpath, track, visited_dirs, **kwargs):
     track_filename = unistr(track.get('@'))
@@ -595,7 +855,10 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
 
     self.handle_cover(dirpath, track, dirname)
 
-    is_new_file = self.create_dirs_and_copy(dirname, src, dst)
+    is_new_file = self.create_dirs_and_copy(dirname, src, dst, 'track')
+
+    if self.is_fast_forwarding and is_new_file:
+      self.is_fast_forwarding = False
 
     self.handle_file_metadata(dst, track, is_new_file)
 
@@ -605,11 +868,26 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
       visited_dirs[dirname].append((basename, track))
 
   def handle_tags(self, dirpath, tags, visited_dirs):
+    totaltracks = len(tags.tracks)
+    done = 0
     for track in tags.tracks:
+      if not self.is_fast_forwarding:
+        self.printer.update_track_and_album(track)
+        self.printer.update_current(
+            done, totaltracks, 'tracks', self._records_processed)
+
       self.process_record(
           visited_dirs, lambda: self.handle_track(dirpath, track, visited_dirs))
 
+      done = done + 1
+
+      if not self.is_fast_forwarding:
+        self.printer.update_current(
+            done, totaltracks, 'tracks', self._records_processed)
+
   def run(self):
+    if self.progress:
+      self.printer.update_status('Initializing...')
     visited_dirs = super(CopyCommand, self).run()
     if self.args.write_mtags:
       for dirname, trackfiles in visited_dirs.iteritems():
@@ -665,6 +943,9 @@ class FindCoversCommand(CoverArtConfigurableCommand):
               ])
           )
       )
+    if hasattr(self.args, 'progress') and self.args.progress:
+      if hasattr(self.args, 'explain') and self.args.explain:
+        parser.error('you cannot specify both --progress and --explain')
     return super(FindCoversCommand, self).run()
 
 def provide_configured_command(args):

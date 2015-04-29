@@ -214,6 +214,13 @@ copy_cmd_parser.add_argument('--even-if-readonly',
 )
 copy_cmd_parser.set_defaults(even_if_readonly=False)
 
+copy_cmd_parser.add_argument('--progress',
+    action='store_true',
+    dest='progress',
+    help='display a nice progress interface instead of outputting a log',
+)
+copy_cmd_parser.set_defaults(progress=False)
+
 copy_cmd_parser.add_argument('--cover-name',
     dest='cover_name',
     default='front',

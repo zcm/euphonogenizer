@@ -1,6 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+from __future__ import print_function
+
 import os
 import sys
 
@@ -21,11 +23,14 @@ def unicwd():
     return eval('os.getcwdu()')
   return os.getcwd()
 
-def uniprint(message):
+def uniprint(message, end=None):
+  if end is None:
+    end = os.linesep
+
   if sys.stdout.encoding:
-    print(message.encode(sys.stdout.encoding, errors='replace'))
+    print(message.encode(sys.stdout.encoding, errors='replace'), end=end)
   else:
-    print(message.encode('ascii', errors='replace'))
+    print(message.encode('ascii', errors='replace'), end=end)
 
 def unistr(s):
   if sys.version_info[0] < 3:
