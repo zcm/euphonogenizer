@@ -42,6 +42,31 @@ def configure_url_frame(key, frameid):
   url_delete = get_url_frame_delete_closure(frameid)
   EasyID3.RegisterKey(key, url_get, url_set, url_delete)
 
+def comment_txxx_set_fallback(cls, id3, key, value):
+  frameid = 'TXXX:'
+
+  if key is None or key == 'comment':
+    frameid = 'COMM'
+  else:
+    frameid = frameid + key
+
+  try:
+    frame = id3[frameid]
+  except KeyError:
+    enc = 0
+    # Store 8859-1 if we can, per MusicBrainz spec.
+    for v in value:
+      if v and max(v) > u'\x7f':
+        enc = 3
+        break
+
+    if key is None:
+      id3.add(mutagen.id3.COMM(encoding=enc, text=value))
+    else:
+      id3.add(mutagen.id3.TXXX(encoding=enc, text=value, desc=key))
+  else:
+    frame.text = value
+
 def configure_id3_ext():
   """
   Configures Mutagen to handle ID3 tags in exactly the same way that foobar2000
@@ -62,7 +87,6 @@ def configure_id3_ext():
       'TSOA': 'albumsortorder',
       'TSOP': 'artistsortorder',
       'TPE2': 'band',
-      'COMM': 'comment',
       'TSOC': 'composersortorder',
       'TIT1': 'content group',
       'TENC': 'encoded by',
@@ -77,7 +101,7 @@ def configure_id3_ext():
       'WPUB': 'publisher url',
       'TRSN': 'radio station',
       'TRSO': 'radio station owner',
-      'TRDL': 'release date',
+      'TDRL': 'release date',
       'TPE4': 'remixed by',
       'TSST': 'set subtitle',
       'TIT3': 'subtitle',
@@ -108,6 +132,8 @@ def configure_id3_ext():
       'recording dates': 'recording dates',
   }):
     EasyID3.RegisterTXXXKey(key, desc)
+
+  EasyID3.SetFallback = comment_txxx_set_fallback
 
   # TODO(dremelofdeath): Support unsynced lyrics -- this can be complicated due
   # to the fact that ID3 supports different encodings and languages for this

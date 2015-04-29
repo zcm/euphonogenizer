@@ -391,7 +391,13 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
 
   def really_handle_metadata(self, filename, track, is_new_file):
     mutagen_file = File(filename, easy=True)
-    changed = is_new_file or self.has_metadata_changed(mutagen_file, track)
+
+    is_complex_type = isinstance(mutagen_file, (
+        ID3FileType, EasyID3FileType, EasyMP4, EasyMP3, MP3, MP4,
+        EasyTrueAudio, TrueAudio))
+
+    changed = is_new_file or self.has_metadata_changed(
+        mutagen_file, track, is_complex_type)
 
     if is_new_file or changed:
       try:
@@ -399,10 +405,52 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
           self.maybe_clear_existing_metadata(
               filename, mutagen_file, is_new_file)
 
+        complex_discnumber = None
+        complex_totaldiscs = None
+        complex_tracknumber = None
+        complex_totaltracks = None
+
         for key, value in iteritems(track):
           if key == '@':
             continue
-          mutagen_file[self.marshal_mutagen_key(mutagen_file, key)] = value
+
+          mutagen_key = self.marshal_mutagen_key(
+              mutagen_file, key, is_complex_type)
+
+          if is_complex_type:
+            if mutagen_key == 'discnumber':
+              complex_discnumber = value
+              continue
+            elif mutagen_key == 'totaldiscs':
+              complex_totaldiscs = value
+              continue
+            elif mutagen_key == 'tracknumber':
+              complex_tracknumber = value
+              continue
+            elif mutagen_key == 'totaltracks':
+              complex_totaltracks = value
+              continue
+
+          mutagen_file[mutagen_key] = value
+
+        if is_complex_type:
+          if complex_totaldiscs:
+            if complex_discnumber:
+              complex_value = complex_discnumber + '/' + complex_totaldiscs
+              mutagen_file['discnumber'] = complex_value
+            else:
+              mutagen_file['totaldiscs'] = complex_totaldiscs
+          elif complex_discnumber:
+            mutagen_file['discnumber'] = complex_discnumber
+
+          if complex_totaltracks:
+            if complex_tracknumber:
+              complex_value = complex_tracknumber + '/' + complex_totaltracks
+              mutagen_file['tracknumber'] = complex_value
+            else:
+              mutagen_file['totaltracks'] = complex_totaltracks
+          elif complex_tracknumber:
+            mutagen_file['tracknumber'] = complex_tracknumber
 
         if not self.args.dry_run:
           self.write_metadata(filename, mutagen_file, is_new_file)
@@ -433,15 +481,13 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
 
 
   @classmethod
-  def marshal_mutagen_key(cls, mutagen_file, key):
+  def marshal_mutagen_key(cls, mutagen_file, key, is_complex_type):
     """
     Translates from Foobar2000's label of the metadata frame to Mutagen's
     expected format. This varies based on the type of the file that you are
     trying to write (in particular, ID3 is complicated).
     """
-    if isinstance(mutagen_file, (
-        ID3FileType, EasyID3FileType, EasyMP4, EasyMP3, MP3, MP4,
-        EasyTrueAudio, TrueAudio)):
+    if is_complex_type:
       # These types are weird, so we're just going to return a lowercased key.
       return key.lower()
 
@@ -465,7 +511,12 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
   def maybe_clear_existing_metadata(self, filename, mutagen_file, is_new_file):
     self.maybe_force_write(filename, is_new_file, lambda: mutagen_file.delete())
 
-  def has_metadata_changed(self, mutagen_file, track):
+  def has_metadata_changed(self, mutagen_file, track, is_complex_type):
+    if is_complex_type:
+      # If you're dealing with any of these complex types, it's wayyyy easier to
+      # simply just rewrite the metadata every single time. Just go to the disk.
+      return True
+
     left_keys = mutagen_file.keys()
     right_keys = track.keys()
 
@@ -477,7 +528,8 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
     if left_keys_len != right_keys_len:
       return True
 
-    marshalled_right_keys = [self.marshal_mutagen_key(mutagen_file, key)
+    marshalled_right_keys = [self.marshal_mutagen_key(
+                                 mutagen_file, key, is_complex_type)
                              for key in right_keys if key != '@']
 
     # If any of the fields in the right are not in the left, it's changed.
@@ -489,7 +541,9 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
     # If any of the field values have changed (or changed types), it's changed.
     for key, value in iteritems(track):
       if key != '@':
-        marshalled_key = self.marshal_mutagen_key(mutagen_file, key)
+        marshalled_key = self.marshal_mutagen_key(
+            mutagen_file, key, is_complex_type)
+
         before = mutagen_file[marshalled_key]
 
         if isinstance(before, (list, tuple)):
