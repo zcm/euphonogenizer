@@ -386,10 +386,10 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
   def handle_metadata(self, filename, track, is_new_file, silent):
     if self.args.write_file_metadata:
       if self.progress and not silent:
-        self.printer.update_status('Writing metadata')
-      return self.really_handle_metadata(filename, track, is_new_file)
+        self.printer.update_status('Checking metadata')
+      return self.really_handle_metadata(filename, track, is_new_file, silent)
 
-  def really_handle_metadata(self, filename, track, is_new_file):
+  def really_handle_metadata(self, filename, track, is_new_file, silent):
     mutagen_file = File(filename, easy=True)
 
     is_complex_type = isinstance(mutagen_file, (
@@ -400,6 +400,9 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
         mutagen_file, track, is_complex_type)
 
     if is_new_file or changed:
+      if self.progress and not silent:
+        self.printer.update_status('Updating metadata')
+
       try:
         if not self.args.dry_run:
           self.maybe_clear_existing_metadata(
@@ -586,7 +589,7 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
   def really_write_metadata(self, filename, mutagen_file, is_new_file):
     if not is_new_file:
       if not self.args.quiet:
-        self.printer.update_status('Updating metadata', ' for: ' + filename)
+        self.printer.update_status('Writing metadata', ' for: ' + filename)
 
     self.maybe_force_write(
         filename, is_new_file, lambda: mutagen_file.save(filename))
