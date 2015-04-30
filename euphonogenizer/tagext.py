@@ -7,6 +7,8 @@ import mutagen.id3
 from mutagen._compat import iteritems
 from mutagen.easyid3 import EasyID3
 from mutagen.easyid3 import EasyID3KeyError
+from mutagen.easyid3 import gain_get, gain_set, gain_delete, peakgain_list
+from mutagen.easyid3 import peak_get, peak_set, peak_delete
 
 
 is_configured = False
@@ -42,6 +44,70 @@ def configure_url_frame(key, frameid):
   url_delete = get_url_frame_delete_closure(frameid)
   EasyID3.RegisterKey(key, url_get, url_set, url_delete)
 
+def get_best_txxx_encoding(value):
+  # Store 8859-1 if we can, per MusicBrainz spec.
+  for v in value:
+    if v and max(v) > u'\x7f':
+      return 3
+
+  return 0
+
+def gain_get_with_txxx(id3, key):
+  frameid = 'TXXX:' + key
+
+  try:
+    frame = id3[frameid]
+  except KeyError:
+    return None
+
+  return gain_get(id3, key)
+
+def gain_set_with_txxx(id3, key, value):
+  frameid = 'TXXX:' + key
+
+  try:
+    frame = id3[frameid]
+  except KeyError:
+    enc = get_best_txxx_encoding(value)
+
+    id3.add(mutagen.id3.TXXX(encoding=enc, text=value, desc=key))
+  else:
+    frame.text = value
+
+  return gain_set(id3, key, value)
+
+def gain_delete_with_txxx(id3, key):
+  del(id3['TXXX:' + key])
+  return gain_delete(id3, key)
+
+def peak_get_with_txxx(id3, key):
+  frameid = 'TXXX:' + key
+
+  try:
+    frame = id3[frameid]
+  except KeyError:
+    return None
+
+  return peak_get(id3, key)
+
+def peak_set_with_txxx(id3, key, value):
+  frameid = 'TXXX:' + key
+
+  try:
+    frame = id3[frameid]
+  except KeyError:
+    enc = get_best_txxx_encoding(value)
+
+    id3.add(mutagen.id3.TXXX(encoding=enc, text=value, desc=key))
+  else:
+    frame.text = value
+
+  return peak_set(id3, key, value)
+
+def peak_delete_with_txxx(id3, key):
+  del(id3['TXXX:' + key])
+  return peak_delete(id3, key)
+
 def comment_txxx_set_fallback(cls, id3, key, value):
   frameid = 'TXXX:'
 
@@ -53,12 +119,7 @@ def comment_txxx_set_fallback(cls, id3, key, value):
   try:
     frame = id3[frameid]
   except KeyError:
-    enc = 0
-    # Store 8859-1 if we can, per MusicBrainz spec.
-    for v in value:
-      if v and max(v) > u'\x7f':
-        enc = 3
-        break
+    enc = get_best_txxx_encoding(value)
 
     if key is None:
       id3.add(mutagen.id3.COMM(encoding=enc, text=value))
@@ -133,6 +194,24 @@ def configure_id3_ext():
   }):
     EasyID3.RegisterTXXXKey(key, desc)
 
+  # Override Mutagen's default behavior for ReplayGain, since Foobar handles it
+  # differently. We will still write the RVA2 frame, but we'll write the
+  # ReplayGain info to TXXX frames as well.
+  del(EasyID3.Get['replaygain_*_gain'])
+  del(EasyID3.Get['replaygain_*_peak'])
+  del(EasyID3.Set['replaygain_*_gain'])
+  del(EasyID3.Set['replaygain_*_peak'])
+  del(EasyID3.Delete['replaygain_*_gain'])
+  del(EasyID3.Delete['replaygain_*_peak'])
+
+  EasyID3.RegisterKey('replaygain_*_gain',
+      gain_get_with_txxx, gain_set_with_txxx, gain_delete_with_txxx,
+      peakgain_list)
+  EasyID3.RegisterKey('replaygain_*_peak',
+      peak_get_with_txxx, peak_set_with_txxx, peak_delete_with_txxx)
+
+  # And for whatever unknown frames exist out there, we will just make them TXXX
+  # comments, just to be completely sure we're copying EVERYTHING.
   EasyID3.SetFallback = comment_txxx_set_fallback
 
   # TODO(dremelofdeath): Support unsynced lyrics -- this can be complicated due
