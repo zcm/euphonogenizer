@@ -168,6 +168,20 @@ filter_group.add_argument('--contains',
     metavar='PATTERN',
 )
 
+list_or_count_parser = argparse.ArgumentParser(add_help=False)
+
+list_or_count_parser.add_argument('--display',
+    default='%artist% - %title%',
+    help='pattern used to format output when listing tracks',
+    metavar='PATTERN',
+)
+
+list_or_count_parser.add_argument('--unique',
+    action='store_true',
+    default=False,
+    help='only print or count each uniquely formatted line once',
+)
+
 copy_cmd_parser=cmd_parser.add_parser('copy',
     help='copy all referenced files found in metadata',
     parents=[shared_cmd_parser, cover_parser],
@@ -262,19 +276,7 @@ findcovers_cmd_parser.set_defaults(explain=False)
 
 list_cmd_parser = cmd_parser.add_parser('list',
     help='print out all found tracks',
-    parents=[shared_cmd_parser, filter_parser],
-)
-
-list_cmd_parser.add_argument('--display',
-    default='%artist% - %title%',
-    help='pattern used to format output when listing tracks',
-    metavar='PATTERN',
-)
-
-list_cmd_parser.add_argument('--unique',
-    action='store_true',
-    default=False,
-    help='only print each uniquely formatted line once',
+    parents=[shared_cmd_parser, filter_parser, list_or_count_parser],
 )
 
 list_cmd_parser.add_argument('--groupby',
@@ -294,6 +296,11 @@ list_cmd_parser.add_argument('--group-startswith',
     action=RequireOtherArgument('groupby'),
     help='display only output whose group starts with the specified pattern',
     metavar='PATTERN',
+)
+
+count_cmd_parser = cmd_parser.add_parser('count',
+    help='like "list", but count the number of displayed tracks',
+    parents=[shared_cmd_parser, filter_parser, list_or_count_parser],
 )
 
 

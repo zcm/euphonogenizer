@@ -798,23 +798,52 @@ class CoverArtFileMetadataConfigurableCommand(CoverArtConfigurableCommand):
 
 
 class ListCommand(TrackCommand):
-  def handle_track(self, track, **kwargs):
-    formatted = self.titleformatter.format(track, self.args.display)
+  def __init__(
+      self, args=None, titleformatter=None, fileformatter=None, printer=None):
+    super(ListCommand, self).__init__(
+        args, titleformatter, fileformatter, printer)
+    self.groupby = args and hasattr(args, 'groupby') and args.groupby
+
+  def on_formatted_track_included(self, track, formatted, group, **kwargs):
+    self.printer.print_or_defer_output(formatted, group)
+
+  def handle_formatted_track(self, track, formatted, **kwargs):
     group = None
-    if self.args and self.args.groupby:
-      group = self.titleformatter.format(track, self.args.groupby)
+    if self.groupby:
+      group = self.titleformatter.format(track, self.groupby)
       if not self.should_group_filter_include(group, track, **kwargs):
         return
     if self.should_filter_include(formatted, track, **kwargs):
-      self.printer.print_or_defer_output(formatted, group)
+      self.on_formatted_track_included(track, formatted, group, **kwargs)
+
+  def handle_track(self, track, **kwargs):
+    formatted = self.titleformatter.format(track, self.args.display)
+    self.handle_formatted_track(track, formatted, **kwargs)
 
   def handle_tags(self, dirpath, tags, visited_dirs):
     track_params = {}
     self.precompute_static_filter_patterns(track_params)
-    self.precompute_static_group_filter_patterns(track_params)
+    if self.groupby:
+      self.precompute_static_group_filter_patterns(track_params)
     for track in tags.tracks:
       self.process_record(
           visited_dirs, lambda: self.handle_track(track, **track_params))
+
+
+class CountCommand(ListCommand):
+  def __init__(
+      self, args=None, titleformatter=None, fileformatter=None, printer=None):
+    super(CountCommand, self).__init__(
+        args, titleformatter, fileformatter, printer)
+    self.totalcount = 0
+
+  def on_formatted_track_included(self, track, formatted, group, **kwargs):
+    self.totalcount = self.totalcount + 1
+
+  def run(self):
+    visited_dirs = super(CountCommand, self).run()
+    uniprint(unistr(self.totalcount))
+    return visited_dirs
 
 
 class CopyCommand(CoverArtFileMetadataConfigurableCommand):
@@ -1008,6 +1037,8 @@ class FindCoversCommand(CoverArtConfigurableCommand):
 def provide_configured_command(args):
   if args.cmd == 'list':
     return ListCommand(args)
+  elif args.cmd == 'count':
+    return CountCommand(args)
   elif args.cmd == 'copy':
     return CopyCommand(args)
   elif args.cmd == 'findcovers':
