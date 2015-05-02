@@ -15,6 +15,7 @@ import colorama
 import colorama.ansi
 
 import mtags
+import terminalsize
 import titleformat
 
 from args import parser
@@ -214,16 +215,29 @@ class PrintHandler(DefaultConfigurable):
       s = s + self.undo_last_jump()
       uniprint(s, end='')
 
+  def limit_to_width(self, text, width):
+    if len(text) > width:
+      # TODO(dremelofdeath): Consider printing an ellipsis character if the
+      # terminal that we're on supports it (meaning supports Unicode).
+      return text[:width-3] + '...'
+    return text
+
   def update_track_and_album(self, track):
     if self.progress:
       t_pattern = '%album artist% - %title%'
       a_pattern = '%album% (%date%)'
       s = self.jump_to_and_clear_track()
-      s = s + self.titleformatter.format(track, t_pattern) + os.linesep
+      term_w, term_h = terminalsize.get_terminal_size()
+      widthlimit = term_w - 14
+      tracktext = self.titleformatter.format(track, t_pattern)
+      tracktext = self.limit_to_width(tracktext, widthlimit)
+      s = s + tracktext + os.linesep
       self.last_jump = self.last_jump - 1
       s = s + self.undo_last_jump()
       s = s + self.jump_to_and_clear_album()
-      s = s + self.titleformatter.format(track, a_pattern) + os.linesep
+      albumtext = self.titleformatter.format(track, a_pattern)
+      albumtext = self.limit_to_width(albumtext, widthlimit)
+      s = s + albumtext + os.linesep
       self.last_jump = self.last_jump - 1
       s = s + self.undo_last_jump()
       uniprint(s, end='')
@@ -750,6 +764,7 @@ class TrackCommand(AutomaticConfiguringCommand):
       on_tags_found(dirpath, dirnames, filenames, all_tags)
 
   def handle_each_tag(self, dirpath, all_tags, visited_dirs):
+    self.on_progress_tag_done()
     for tagsfile in all_tags:
       tags = mtags.TagsFile(os.path.join(dirpath, tagsfile))
       self.handle_tags(dirpath, tags, visited_dirs)
