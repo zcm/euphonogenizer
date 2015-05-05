@@ -112,6 +112,15 @@ shared_cmd_parser.add_argument('--limit',
     metavar='INT',
 )
 
+quiet_parser = argparse.ArgumentParser(add_help=False)
+
+quiet_parser.add_argument('-q', '--quiet',
+    action='store_true',
+    dest='quiet',
+    help="don't print anything but errors while performing the operation",
+)
+quiet_parser.set_defaults(quiet=False)
+
 cover_parser = argparse.ArgumentParser(add_help=False)
 
 cover_group = cover_parser.add_mutually_exclusive_group()
@@ -184,7 +193,7 @@ list_or_count_parser.add_argument('--unique',
 
 copy_cmd_parser=cmd_parser.add_parser('copy',
     help='copy all referenced files found in metadata',
-    parents=[shared_cmd_parser, cover_parser],
+    parents=[shared_cmd_parser, quiet_parser, cover_parser],
 )
 
 copy_cmd_parser.add_argument('--to',
@@ -242,13 +251,6 @@ copy_cmd_parser.add_argument('--cover-name',
     metavar='NAME',
 )
 
-copy_cmd_parser.add_argument('-q', '--quiet',
-    action='store_true',
-    dest='quiet',
-    help="don't print anything but errors while performing the operation",
-)
-copy_cmd_parser.set_defaults(quiet=False)
-
 copy_cmd_parser.add_argument('--no-skip-cue',
     action='store_false',
     dest='skip_cue',
@@ -303,6 +305,10 @@ count_cmd_parser = cmd_parser.add_parser('count',
     parents=[shared_cmd_parser, filter_parser, list_or_count_parser],
 )
 
+generate_cmd_parser = cmd_parser.add_parser('generate',
+    help='create new M-TAGS files based on existing metadata',
+    parents=[quiet_parser],
+)
 
 parser.add_argument('--tagsfile',
     default='!.tags',

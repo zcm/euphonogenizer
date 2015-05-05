@@ -47,7 +47,7 @@ def retry_if_ioerror(exception):
 
 
 class LimitReachedException(Exception):
-  def __init__(self, message="Limit reached", visited_dirs=None):
+  def __init__(self, message='Limit reached', visited_dirs=None):
     super(LimitReachedException, self).__init__(message)
     self.visited_dirs = visited_dirs
 
@@ -364,6 +364,22 @@ class CoverArtFinder(DefaultPrintingConfigurable):
     return retval
 
 
+class FoobarMetadataHandler:
+  known_mutagen_keys = {
+      'albumartist': 'ALBUM ARTIST',
+      'organization': 'PUBLISHER',
+      'disctotal': 'TOTALDISCS',
+      'tracktotal': 'TOTALTRACKS',
+  }
+
+  @classmethod
+  def marshal_foobar_key(cls, key):
+    if key in cls.known_mutagen_keys:
+      return cls.known_mutagen_keys[key]
+
+    return key.upper()
+
+
 class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
   # TODO(dremelofdeath): See if Foobar does this with filetypes other than FLAC
   # as well.
@@ -373,16 +389,16 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
       # appear first are determined to be the 'real' fields, and if there are
       # others that have the same name as Foobar's internal name, they will come
       # afterwards.
-      "ALBUM ARTIST": "ALBUMARTIST",
+      'ALBUM ARTIST': 'ALBUMARTIST',
       # Foobar writes these fields right before ReplayGain fields, and uses its
       # proximity to them in order to determine which one is the "real" field,
       # in the event that there are multiple as far as I can tell. This is
       # basically the complete opposite of the previous group of fields, since
       # the ReplayGain fields are written last. Emulating this behavior is going
       # to be a nightmare...
-      "PUBLISHER": "ORGANIZATION",
-      "TOTALDISCS": "DISCTOTAL",
-      "TOTALTRACKS": "TRACKTOTAL",
+      'PUBLISHER': 'ORGANIZATION',
+      'TOTALDISCS': 'DISCTOTAL',
+      'TOTALTRACKS': 'TRACKTOTAL',
   }
 
   def __init__(
@@ -1049,6 +1065,73 @@ class FindCoversCommand(CoverArtConfigurableCommand):
         parser.error('you cannot specify both --progress and --explain')
     return super(FindCoversCommand, self).run()
 
+
+class GenerateCommand(AutomaticConfiguringCommand):
+  def __init__(
+      self, args=None, titleformatter=None, fileformatter=None, printer=None):
+    super(GenerateCommand, self).__init__(
+        args, titleformatter, fileformatter, printer)
+
+  def process_single_media(self, filename, mutagen_file, taglist):
+    track = {}
+
+    track['@'] = filename
+
+    for key in mutagen_file.keys():
+      metadata_field = mutagen_file[key]
+
+      if isinstance(metadata_field, list) and len(metadata_field) == 1:
+        metadata_field = metadata_field[0]
+
+      track[FoobarMetadataHandler.marshal_foobar_key(key)] = metadata_field
+
+    taglist.append(track)
+
+  def handle_all_media(self):
+    all_tags = {}
+
+    for dirpath, dirnames, filenames in os.walk(unicwd()):
+      for each in filenames:
+        mutagen_file = File(os.path.join(dirpath, each), easy=True)
+        if mutagen_file is not None:
+          if dirpath not in all_tags:
+            all_tags[dirpath] = {
+                'file': os.path.join(dirpath, self.args.tagsfile),
+                'tracks': [],
+            }
+
+          self.process_single_media(
+              each, mutagen_file, all_tags[dirpath]['tracks'])
+
+    tags_written = 0
+
+    for each in sorted(all_tags.keys()):
+      tracks = all_tags[each]['tracks']
+
+      if len(tracks) == 0:
+        continue
+
+      filename = all_tags[each]['file']
+
+      if not self.args.quiet:
+        self.printer.print_or_defer_output(
+            'writing tags file: %s (%d tracks)' % (filename, len(tracks)))
+
+      mtags.TagsFile(tracks).write(filename)
+
+      tags_written = tags_written + 1
+
+    if tags_written == 0:
+      self.printer.print_or_defer_output(
+          "couldn't find any tags to write -- are you in the right directory?")
+    elif tags_written > 1:
+      self.printer.print_or_defer_output(
+          "%d tag files written" % (tags_written))
+
+  def run(self):
+    self.handle_all_media()
+
+
 def provide_configured_command(args):
   if args.cmd == 'list':
     return ListCommand(args)
@@ -1058,6 +1141,8 @@ def provide_configured_command(args):
     return CopyCommand(args)
   elif args.cmd == 'findcovers':
     return FindCoversCommand(args)
+  elif args.cmd == 'generate':
+    return GenerateCommand(args)
   else:
     parser.error("can't understand command '%s' -- this is a bug!" % (args.cmd))
 
