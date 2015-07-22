@@ -160,24 +160,36 @@ class PrintHandler(DefaultConfigurable):
       s = s + self.undo_last_jump()
       uniprint(s, end='')
 
+  def on_before_update(self):
+    pass
+
+  def on_after_update(self):
+    pass
+
   def update_progress(self, done, total, plural_noun):
     if self.progress:
+      self.on_before_update()
       s = self.jump_to_and_clear_progress()
       s = s + self.get_completion_output(done, total, plural_noun) + os.linesep
       self.last_jump = self.last_jump - 1
       s = s + self.undo_last_jump()
       uniprint(s, end='')
+      self.on_after_update()
 
   def update_current(self, done, total, plural_noun, sumtotal):
     if self.progress:
+      self.on_before_update()
       s = self.jump_to_and_clear_current()
       s = s + self.get_completion_output(done, total, plural_noun, sumtotal)
       s = s + os.linesep
       self.last_jump = self.last_jump - 1
       s = s + self.undo_last_jump()
       uniprint(s, end='')
+      self.on_after_update()
 
   def update_last_file(self, last_result, long_form=None):
+    self.on_before_update()
+
     if not self.progress:
       if long_form is None:
         uniprint(last_result)
@@ -189,6 +201,8 @@ class PrintHandler(DefaultConfigurable):
       self.last_jump = self.last_jump - 1
       s = s + self.undo_last_jump()
       uniprint(s, end='')
+
+    self.on_after_update()
 
   def get_completion_output(self, done, total, plural_noun, sumtotal=None):
     s = '%d of %d %s processed (%d%%' % (
@@ -202,6 +216,8 @@ class PrintHandler(DefaultConfigurable):
     return s
 
   def update_status(self, status=None, long_form=None):
+    self.on_before_update()
+
     if not self.progress:
       if long_form is None:
         uniprint(status)
@@ -215,6 +231,8 @@ class PrintHandler(DefaultConfigurable):
       s = s + self.undo_last_jump()
       uniprint(s, end='')
 
+    self.on_after_update()
+
   def limit_to_width(self, text, width):
     if len(text) > width:
       # TODO(dremelofdeath): Consider printing an ellipsis character if the
@@ -224,6 +242,7 @@ class PrintHandler(DefaultConfigurable):
 
   def update_track_and_album(self, track):
     if self.progress:
+      self.on_before_update()
       t_pattern = '%album artist% - %title%'
       a_pattern = '%album% (%date%)'
       s = self.jump_to_and_clear_track()
@@ -241,6 +260,7 @@ class PrintHandler(DefaultConfigurable):
       self.last_jump = self.last_jump - 1
       s = s + self.undo_last_jump()
       uniprint(s, end='')
+      self.on_after_update()
 
   def jump_to_and_clear_field(self, n):
     s = self.jump_up_lines(n) + self.forward_to_field() + self.clear_to_end()
@@ -486,8 +506,8 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
             mutagen_file['tracknumber'] = complex_tracknumber
 
         if not self.args.dry_run:
-          self.write_metadata(filename, mutagen_file, is_new_file)
-          if self.progress:
+          did_write = self.write_metadata(filename, mutagen_file, is_new_file)
+          if did_write and self.progress:
             # TODO(dremelofdeath): Gah, I know this shouldn't be here. I'll fix
             # it later...
             # Don't check silent. If the metadata has changed, we will stop
@@ -607,14 +627,16 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
       if not self.args.quiet:
         if hasattr(self.args, 'progress') and self.args.progress:
           self.printer.update_last_file(
-              "Didn't write newer metadata; file exists"
-              + ' (use --update-metadata to write anyway)')
+              'File exists (use --update-metadata to write newer metadata)')
         else:
           uniprint('Not writing newer metadata because file exists')
           uniprint('  (use --update-metadata to write metadata anyway)')
-      return
+      return False
 
     self.really_write_metadata(filename, mutagen_file, is_new_file)
+
+    # Calling really_write_metadata can throw an exception, so this is safe.
+    return True
 
   def really_write_metadata(self, filename, mutagen_file, is_new_file):
     if not is_new_file:
