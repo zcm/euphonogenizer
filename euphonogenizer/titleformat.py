@@ -14,7 +14,7 @@ import re
 import sys
 import unicodedata
 
-from common import dbg, unistr
+from .common import dbg, unistr
 
 
 def magic_map_filename(formatter, track):

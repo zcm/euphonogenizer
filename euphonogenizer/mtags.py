@@ -1,9 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import chardet
 import codecs
 import simplejson
 import sys
+
+from .common import compat_iteritems
 
 
 class TagsFile:
@@ -11,8 +14,10 @@ class TagsFile:
     if isinstance(filenameorlist, list):
       self.tracks = filenameorlist
     else:
-      with open(filenameorlist) as tags:
-        tagsjson = simplejson.load(tags)
+      with open(filenameorlist, 'rb') as tags:
+        tbytes = tags.read()
+        tagsjson = simplejson.loads(
+            tbytes, encoding=chardet.detect(tbytes)['encoding'])
         self._process_saturated_tags(tagsjson)
 
   def _process_saturated_tags(self, tagsjson):
@@ -20,7 +25,7 @@ class TagsFile:
     saturated_tags = {}
 
     for track in tagsjson:
-      for tag_field, value in track.iteritems():
+      for tag_field, value in compat_iteritems(track):
         if value == []:
           # This is, strangely, how the M-TAGS format erases values
           del saturated_tags[tag_field]
@@ -35,15 +40,17 @@ class TagsFile:
       last_saturated_tags = {}
       for track in self.tracks:
         current_desaturated = {}
-        for tag_field, value in track.iteritems():
+        for tag_field, value in compat_iteritems(track):
           if tag_field in last_saturated_tags:
             if value != last_saturated_tags[tag_field]:
               current_desaturated[tag_field] = value
           else:
             current_desaturated[tag_field] = value
-        for tag_field, value in last_saturated_tags.iteritems():
+
+        for tag_field, value in compat_iteritems(last_saturated_tags):
           if tag_field not in track:
             current_desaturated[tag_field] = []
+
         last_saturated_tags = track
         desaturated.append(current_desaturated)
     return desaturated

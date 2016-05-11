@@ -135,10 +135,10 @@ def configure_id3_ext():
   EasyID3 interface to treat all file types the same (except probably MP4).
   """
 
+  global is_configured
+
   if is_configured:
     return
-
-  global is_configured
 
   # First, we need to configure all the extended text frames.
   for frameid, key in iteritems({

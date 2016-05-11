@@ -9,6 +9,11 @@ import sys
 
 progname = 'euphonogenizer'
 
+def compat_iteritems(obj):
+  try:
+    return obj.iteritems()
+  except AttributeError:
+    return obj.items()
 
 def dbg(message, depth=0):
   output = '[dbg] ' + ' ' * depth * 2 + message
@@ -28,9 +33,12 @@ def uniprint(message, end=None):
     end = os.linesep
 
   if sys.stdout.encoding:
-    print(message.encode(sys.stdout.encoding, errors='replace'), end=end)
+    sys.stdout.buffer.write(
+            message.encode(sys.stdout.encoding, errors='replace'))
   else:
-    print(message.encode('ascii', errors='replace'), end=end)
+    sys.stdout.buffer.write(message.encode('ascii', errors='replace'))
+
+  print('', end=end)
 
 def unistr(s):
   if sys.version_info[0] < 3:

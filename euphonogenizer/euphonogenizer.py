@@ -14,13 +14,15 @@ import sys
 import colorama
 import colorama.ansi
 
-import mtags
-import terminalsize
-import titleformat
+from . import mtags
+from . import terminalsize
+from . import titleformat
 
-from args import parser
-from common import dbg, err, progname, unicwd, uniprint, unistr
+from .args import parser
+from .common import compat_iteritems, dbg, err, progname, unicwd, uniprint, unistr
+
 from mutagen import File
+from mutagen.flac import FLAC
 from mutagen.id3 import ID3FileType
 from mutagen.easyid3 import EasyID3FileType
 from mutagen.easymp4 import EasyMP4
@@ -427,7 +429,7 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
         args, titleformatter, fileformatter, printer)
     # I know this looks stupid, but we really only need this submodule if we are
     # going to be processing file metadata. Same with the ID3 configuration.
-    import tagext
+    from . import tagext
 
     tagext.configure_id3_ext()
 
@@ -561,8 +563,18 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
 
     return upperkey
 
+  def safe_clear_metadata(self, mutagen_file):
+    # It might be the case that Mutagen fails to correctly initialize the file
+    # object; if this is the case, we'll correct that for them (it's probably a
+    # bug) and then erase the metadata anyway. This might be a Python 3 thing.
+    if isinstance(mutagen_file, FLAC) and mutagen_file.tags is not None:
+      if mutagen_file.tags not in mutagen_file.metadata_blocks:
+        mutagen_file.metadata_blocks.append(mutagen_file.tags)
+    mutagen_file.delete()
+
   def maybe_clear_existing_metadata(self, filename, mutagen_file, is_new_file):
-    self.maybe_force_write(filename, is_new_file, lambda: mutagen_file.delete())
+    self.maybe_force_write(
+        filename, is_new_file, lambda: self.safe_clear_metadata(mutagen_file))
 
   def has_metadata_changed(self, mutagen_file, track, is_complex_type):
     if is_complex_type:
@@ -1029,7 +1041,7 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
       self.printer.update_status('Initializing...')
     visited_dirs = super(CopyCommand, self).run()
     if self.args.write_mtags:
-      for dirname, trackfiles in visited_dirs.iteritems():
+      for dirname, trackfiles in compat_iteritems(visited_dirs):
         pending_mtags = []
         for trackfile in trackfiles:
           basename = trackfile[0]

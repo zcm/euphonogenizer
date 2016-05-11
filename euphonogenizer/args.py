@@ -4,7 +4,7 @@
 import argparse
 import os
 
-from common import progname
+from .common import progname
 
 desc = '''
 Manages music libraries with metadata in M-TAGS format.
