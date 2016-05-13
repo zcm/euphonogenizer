@@ -14,12 +14,14 @@ import sys
 import colorama
 import colorama.ansi
 
+from . import albumart
 from . import mtags
 from . import terminalsize
 from . import titleformat
 
-from .args import parser
-from .common import compat_iteritems, dbg, err, progname, unicwd, uniprint, unistr
+from .args import parser, EmbedCoverArg
+from .common import (compat_iteritems, dbg, err, progname, unicwd, uniprint,
+                     unistr, write_with_override)
 
 from mutagen import File
 from mutagen.flac import FLAC
@@ -380,10 +382,23 @@ class CoverArtFinder(DefaultPrintingConfigurable):
             self.cover_dirs.add(dirname)
             retval = (found_cover, dst)
             break
-      if not self.args.per_track_cover_search:
+      if self.should_track_searched_cover_dir(dirname):
         self.cover_dirs.add(dirname)
 
     return retval
+
+  def should_track_searched_cover_dir(dirname):
+    return not self.args.per_track_cover_search
+
+
+class EmbeddedCoverArtFinder(CoverArtFinder):
+  def __init__(self, args, titleformatter, fileformatter, printer=None):
+    super(EmbeddedCoverArtFinder, self).__init__(
+        args, titleformatter, fileformatter, printer)
+
+  def should_track_searched_cover_dir(dirname):
+    return (self.args.embed_cover_art != EmbedCoverArg.EMBED_ONLY
+            and not self.args.per_track_cover_search)
 
 
 class FoobarMetadataHandler:
@@ -435,14 +450,16 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
 
     self.progress = hasattr(args, 'progress') and args.progress
 
-  def handle_metadata(self, filename, track, is_new_file, silent):
+  def handle_metadata(self, mutagen_file, track, is_new_file, silent):
     if self.args.write_file_metadata:
       if self.progress and not silent:
         self.printer.update_status('Checking metadata')
-      return self.really_handle_metadata(filename, track, is_new_file, silent)
+      return self.really_handle_metadata(
+          mutagen_file, track, is_new_file, silent)
 
-  def really_handle_metadata(self, filename, track, is_new_file, silent):
-    mutagen_file = File(filename, easy=True)
+  def really_handle_metadata(self, mutagen_file, track, is_new_file, silent):
+    if not isinstance(mutagen_file, File):
+      mutagen_file = File(mutagen_file, easy=True)
 
     is_complex_type = isinstance(mutagen_file, (
         ID3FileType, EasyID3FileType, EasyMP4, EasyMP3, MP3, MP4,
@@ -660,23 +677,11 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
 
   def maybe_force_write(self, filename, is_new_file, forced_write_closure):
     try:
-      forced_write_closure()
+      write_with_override(filename, forced_write_closure,
+          override = is_new_file or self.args.even_if_readonly)
     except IOError:
-      # This is probably due to the read-only flag being set, so check it.
-      if is_new_file or self.args.even_if_readonly:
-        if not os.access(filename, os.W_OK):
-          # We will just clear the flag temporarily and then set it back.
-          mode = os.stat(filename)[stat.ST_MODE]
-          os.chmod(filename, stat.S_IWRITE)
-          forced_write_closure()
-          os.chmod(filename, mode)
-        else:
-          # Something else bad is happening then.
-          raise
-      else:
-        # We're not going to force it. The file isn't writable, so skip it.
-        raise UnwritableMetadataException(
-            'Metadata unwritable for ' + filename)
+      # Can't force it for some reason. We will skip it.
+      raise UnwritableMetadataException('Metadata unwritable for ' + filename)
 
 
 class AutomaticConfiguringCommand(DefaultPrintingConfigurable):
@@ -916,6 +921,11 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
       printer=None, cover_finder=None, metadata_handler=None):
     super(CopyCommand, self).__init__(args, titleformatter, fileformatter,
         printer, cover_finder, metadata_handler)
+
+    if cover_finder is None and self.args.embed_cover:
+      self.cover_finder = EmbeddedCoverArtFinder(
+          self.args, self.titleformatter, self.fileformatter, self.printer)
+
     self.is_fast_forwarding = self.progress
 
   def on_progress_count_complete(self):
@@ -971,18 +981,22 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
     if srcsize != dstsize:
       self.create_dirs_and_copy(dirname, src, dst, noun)
 
-  def handle_cover(self, dirpath, track, dirname):
+  def handle_cover(self, dirpath, track, dirname, dst_file):
     cover = self.cover_finder.find_cover_art(
         dirpath, track, dirname, silent=self.is_fast_forwarding)
 
     if cover:
       coversrc = cover[0]
       coverdst = cover[1]
-      if self.is_fast_forwarding:
-        self.create_dirs_and_copy_if_size_changed(
-            dirname, coversrc, coverdst, 'cover art')
-      else:
-        self.create_dirs_and_copy(dirname, coversrc, coverdst, 'cover art')
+      if (not self.args.embed_cover
+          or self.args.embed_cover == EmbedCoverArg.EMBED_AND_COPY):
+        if self.is_fast_forwarding:
+          self.create_dirs_and_copy_if_size_changed(
+              dirname, coversrc, coverdst, 'cover art')
+        else:
+          self.create_dirs_and_copy(dirname, coversrc, coverdst, 'cover art')
+      if self.args.embed_cover:
+        albumart.embed(coversrc, dst_file)
 
   def handle_file_metadata(self, filename, track, is_new_file):
     changed = self.metadata_handler.handle_metadata(
@@ -1004,9 +1018,9 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
         track, self.args.to + '.$ext(%filename_ext%)')
     dirname, basename = os.path.split(dst)
 
-    self.handle_cover(dirpath, track, dirname)
-
     is_new_file = self.create_dirs_and_copy(dirname, src, dst, 'track')
+
+    self.handle_cover(dirpath, track, dirname, dst)
 
     if self.is_fast_forwarding and is_new_file:
       self.is_fast_forwarding = False

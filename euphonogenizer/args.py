@@ -155,6 +155,30 @@ cover_group.add_argument('--per-track-cover-search',
 )
 cover_group.set_defaults(per_track_cover_search=False)
 
+embed_cover_parser = argparse.ArgumentParser(
+        add_help=False, parents=[cover_parser])
+
+class EmbedCoversArg:
+    EMBED_ONLY, EMBED_AND_COPY = range(2)
+
+embed_cover_group = embed_cover_parser.add_mutually_exclusive_group()
+
+embed_cover_group.set_defaults(embed_covers=False)
+
+embed_cover_group.add_argument('--embed-covers',
+    action='store_const',
+    dest='embed_covers',
+    const=EmbedCoversArg.EMBED_ONLY,
+    help='embed album artwork into the destination file instead of copying it',
+)
+
+embed_cover_group.add_argument('--embed-covers-and-copy',
+    action='store_const',
+    dest='embed_covers',
+    const=EmbedCoversArg.EMBED_AND_COPY,
+    help='same as --embed-covers, but also copy the cover file',
+)
+
 filter_parser = argparse.ArgumentParser(add_help=False)
 
 filter_group = filter_parser.add_mutually_exclusive_group()
@@ -193,7 +217,7 @@ list_or_count_parser.add_argument('--unique',
 
 copy_cmd_parser=cmd_parser.add_parser('copy',
     help='copy all referenced files found in metadata',
-    parents=[shared_cmd_parser, quiet_parser, cover_parser],
+    parents=[shared_cmd_parser, quiet_parser, embed_cover_parser],
 )
 
 copy_cmd_parser.add_argument('--to',

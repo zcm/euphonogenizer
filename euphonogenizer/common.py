@@ -4,6 +4,7 @@
 from __future__ import print_function
 
 import os
+import stat
 import sys
 
 
@@ -45,3 +46,28 @@ def unistr(s):
     return eval('unicode(s)')
   return str(s)
 
+def write_with_override(filename, do_write, override=True):
+  should_override = override
+
+  try:
+    should_override = override()
+  except TypeError:
+    pass
+
+  try:
+    do_write()
+  except IOError:
+    # This is probably due to the read-only flag being set, so check it.
+    if should_override:
+      if not os.access(filename, os.W_OK):
+        # We will just clear the flag temporarily and then set it back.
+        mode = os.stat(filename)[stat.ST_MODE]
+        os.chmod(filename, stat.S_IWRITE)
+        do_write()
+        os.chmod(filename, mode)
+      else:
+        # Something else bad is happening then.
+        raise
+    else:
+      # We're not going to force it. The file isn't writable, so skip it.
+      raise
