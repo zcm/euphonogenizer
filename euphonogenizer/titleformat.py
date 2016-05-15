@@ -1055,6 +1055,20 @@ def vinvoke(track, function, argv, memory={}):
       raise FunctionVirtualInvocationException(message)
   return vmarshal(funcref(track, memory, argv))
 
+def foobar_filename_escape(output):
+  system = platform.system()
+  if system == 'Windows':
+    if re.match('^[A-Z]:', output, flags=re.I):
+      disk_id = output[0:2]
+      output = disk_id + re.sub('[\\\\/:|]', re.escape(os.sep), output[2:])
+    else:
+      output = re.sub('[\\\\/:|]', re.escape(os.sep), output)
+  else:
+    output = re.sub('[\\\\:|]', re.escape('\\'), output)
+  output = re.sub('[*]', 'x', output)
+  output = re.sub('"', "''", output)
+  output = re.sub('[?<>]', '_', output)
+  return output
 
 class EvaluatorAtom:
   def __init__(self, string_value, truth_value):
@@ -1418,15 +1432,7 @@ class TitleFormatter:
       return None
 
     if depth == 0 and self.for_filename:
-      system = platform.system()
-      if system == 'Windows' and re.match('^[A-Z]:', output, flags=re.I):
-        disk_id = output[0:2]
-        output = disk_id + re.sub('[\\\\/:|]', re.escape(os.sep), output[2:])
-      else:
-        output = re.sub('[\\\\/:|]', re.escape(os.sep), output)
-      output = re.sub('[*]', 'x', output)
-      output = re.sub('"', "''", output)
-      output = re.sub('[?<>]', '_', output)
+      output = foobar_filename_escape(output)
 
     result = EvaluatorAtom(output, False if evaluation_count == 0 else True)
 
