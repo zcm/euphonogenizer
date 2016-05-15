@@ -34,12 +34,18 @@ def uniprint(message, end=None):
     end = os.linesep
 
   if sys.stdout.encoding:
-    sys.stdout.buffer.write(
-            message.encode(sys.stdout.encoding, errors='replace'))
+    try:
+      sys.stdout.buffer.write(
+          message.encode(sys.stdout.encoding, errors='replace'))
+      print('', end=end)
+    except AttributeError:
+      print(message.encode(sys.stdout.encoding, errors='replace'), end=end)
   else:
-    sys.stdout.buffer.write(message.encode('ascii', errors='replace'))
-
-  print('', end=end)
+    try:
+      sys.stdout.buffer.write(message.encode('ascii', errors='replace'))
+      print('', end=end)
+    except AttributeError:
+      print(message.encode('ascii', errors='replace'), end=end)
 
 def unistr(s):
   if sys.version_info[0] < 3:

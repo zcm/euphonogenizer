@@ -17,6 +17,8 @@ setup(
       'simplejson>=3.6.5',
       'mutagen>=1.28',
       'chardet>=2.3.0',
+      'colorama>=0.3.7',
+      'pillow>=3.2.0',
     ],
     entry_points = {
       'console_scripts': [

@@ -10,6 +10,7 @@ from mutagen.mp4 import MP4
 from PIL import Image
 
 from .common import unistr
+from .tagext import uneasy, is_mutagen_file, UneasyMP3
 
 class AlbumArtUnsupportedException(Exception):
   pass
@@ -18,46 +19,12 @@ class AlbumArtNotImplementedException(Exception):
   pass
 
 def embed(cover, target):
-  if isinstance(target, File):
-    embed_file(cover, target)
+  if is_mutagen_file(target):
+    embed_file(cover, uneasy(target))
   else:
     mutagen_file = File(target, easy=False)
     embed_file(cover, mutagen_file)
     mutagen_file.save()
-
-embed_callbacks = {
-    FLAC.__name__: embed_to_flac,
-    MP3.__name__: embed_to_mp3,
-    MP4.__name__: embed_to_mp4,
-}
-
-def embed_file(cover, mutagen_file):
-  try:
-    embed_using_image(
-        cover, mutagen_file, embed_callbacks[mutagen_file.__name__])
-  except KeyError:
-    raise AlbumArtUnsupportedException(
-        'Album art is not supported for type ' + mutagen_file.__name__)
-
-def embed_using_image(cover, mutagen_file, embed_to_callback):
-  return embed_to_callback(cover, Image.open(cover), mutagen_file)
-
-img_mime = {
-    'jpeg': unistr('image/jpeg'),
-    'png': unistr('image/png'),
-}
-
-img_bpp = {
-    '1': 1,
-    'L': 8,
-    'P': 8,
-    'RGB': 24,
-    'YCbCr': 24,
-    'RGBA': 32,
-    'CMYK': 32,
-    'I': 32,
-    'F': 32,
-}
 
 def embed_to_flac(cover, cover_image, flac_file):
   flac_file.clear_pictures()
@@ -88,4 +55,40 @@ def embed_to_mp3(cover, cover_image, mp3_file):
 def embed_to_mp4(cover, cover_image, mp4_file):
   raise AlbumArtNotImplementedException(
       'MP4 album art is not yet implemented.')
+
+embed_callbacks = {
+    FLAC.__name__: embed_to_flac,
+    MP3.__name__: embed_to_mp3,
+    MP4.__name__: embed_to_mp4,
+    UneasyMP3.__name__: embed_to_mp3,
+}
+
+def embed_file(cover, mutagen_file):
+  class_name = mutagen_file.__class__.__name__
+  try:
+    embed_using_image(
+        cover, mutagen_file, embed_callbacks[class_name])
+  except KeyError:
+    raise AlbumArtUnsupportedException(
+        'Album art is not supported for type ' + class_name)
+
+def embed_using_image(cover, mutagen_file, embed_to_callback):
+  return embed_to_callback(cover, Image.open(cover), mutagen_file)
+
+img_mime = {
+    'jpeg': unistr('image/jpeg'),
+    'png': unistr('image/png'),
+}
+
+img_bpp = {
+    '1': 1,
+    'L': 8,
+    'P': 8,
+    'RGB': 24,
+    'YCbCr': 24,
+    'RGBA': 32,
+    'CMYK': 32,
+    'I': 32,
+    'F': 32,
+}
 

@@ -5,14 +5,64 @@
 import mutagen.id3
 
 from mutagen._compat import iteritems
-from mutagen.easyid3 import EasyID3
-from mutagen.easyid3 import EasyID3KeyError
+from mutagen.aac import AAC
+from mutagen.aiff import AIFF
+from mutagen.apev2 import APEv2File
+from mutagen.asf import ASF
+from mutagen.easyid3 import EasyID3, EasyID3KeyError, EasyID3FileType
 from mutagen.easyid3 import gain_get, gain_set, gain_delete, peakgain_list
 from mutagen.easyid3 import peak_get, peak_set, peak_delete
+from mutagen.easymp4 import EasyMP4
+from mutagen.flac import FLAC
+from mutagen.id3 import ID3, ID3FileType
+from mutagen.monkeysaudio import MonkeysAudio
+from mutagen.mp3 import EasyMP3, MP3
+from mutagen.mp4 import MP4
+from mutagen.musepack import Musepack
+from mutagen.oggflac import OggFLAC
+from mutagen.oggspeex import OggSpeex
+from mutagen.oggtheora import OggTheora
+from mutagen.oggvorbis import OggVorbis
+from mutagen.oggopus import OggOpus
+from mutagen.optimfrog import OptimFROG
+from mutagen.smf import SMF
+from mutagen.trueaudio import EasyTrueAudio, TrueAudio
+from mutagen.wavpack import WavPack
 
 
 is_configured = False
 
+
+class UneasyMP3(EasyMP3):
+  def __init__(self, filename=None, *args, **kwargs):
+    pass  # Override the init method to not load a file.
+
+  def from_file(self, easymp3):
+    self.ID3 = ID3
+    self.filename = easymp3.filename
+    self.tags = easymp3.tags._EasyID3__id3 if easymp3.tags else None
+    self.info = easymp3.info
+    return self
+
+
+class UneasyNotImplementedException(Exception):
+  pass
+
+
+def uneasy(mutagen_file):
+  if isinstance(mutagen_file, EasyMP3):
+    return UneasyMP3().from_file(mutagen_file)
+  if isinstance(mutagen_file, EasyMP4):
+    raise UneasyNotImplementedException('MP4 is not yet implemented')
+  if isinstance(mutagen_file, EasyTrueAudio):
+    raise UneasyNotImplementedException('TrueAudio is not yet implemented')
+  return mutagen_file
+
+def is_mutagen_file(mutagen_file):
+  return isinstance(mutagen_file, (
+    AAC, AIFF, APEv2File, ASF, EasyID3FileType, EasyMP4, FLAC, ID3FileType,
+    MonkeysAudio, EasyMP3, MP3, MP4, Musepack, OggFLAC, OggSpeex, OggTheora,
+    OggVorbis, OggOpus, OptimFROG, SMF, EasyTrueAudio, TrueAudio))
 
 def url_frame_get(frameid, id3, key):
   urls = [frame.url for frame in id3.getall(frameid)]

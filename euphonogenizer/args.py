@@ -159,7 +159,7 @@ embed_cover_parser = argparse.ArgumentParser(
         add_help=False, parents=[cover_parser])
 
 class EmbedCoversArg:
-    EMBED_ONLY, EMBED_AND_COPY = range(2)
+    EMBED_ONLY, EMBED_AND_COPY = range(1, 3)
 
 embed_cover_group = embed_cover_parser.add_mutually_exclusive_group()
 
