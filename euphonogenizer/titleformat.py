@@ -1057,6 +1057,7 @@ def vinvoke(track, function, argv, memory={}):
 
 def foobar_filename_escape(output):
   system = platform.system()
+  output = re.sub(' *([' + re.escape(os.sep) + ']) *', '\\1', output)
   if system == 'Windows':
     if re.match('^[A-Z]:', output, flags=re.I):
       disk_id = output[0:2]
