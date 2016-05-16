@@ -40,7 +40,11 @@ class UneasyMP3(EasyMP3):
   def from_file(self, easymp3):
     self.ID3 = ID3
     self.filename = easymp3.filename
-    self.tags = easymp3.tags._EasyID3__id3 if easymp3.tags else None
+    if easymp3.__getattribute__('tags') is not None:
+      easytags = easymp3.__getattribute__('tags')
+      self.tags = easytags.__getattribute__('_EasyID3__id3')
+    else:
+      self.tags = None
     self.info = easymp3.info
     return self
 

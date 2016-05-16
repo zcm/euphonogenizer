@@ -530,23 +530,25 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
         if not self.args.dry_run and not is_new_instance:
           self.handle_metadata_write(filename, mutagen_file, is_new_file)
       except UnwritableMetadataException:
-        if not self.args.quiet:
-          if self.args.even_if_readonly:
-            # We shouldn't be throwing this exception if we're forcing the
-            # write with --even-if-readonly.
-            raise InvalidProcessorStateException(
-                'Failed to write metadata for ' + filename)
-          else:
-            if self.progress:
-              self.printer.update_last_file(
-                  "Couldn't write metadata -- readonly file"
-                  + " (force with --even-if-readonly)")
-            else:
-              uniprint("Can't write metadata for readonly file " + filename)
-              uniprint(
-                  '  (use --even-if-readonly to force writing readonly files)')
+        self.on_unwritable_metadata(filename)
 
     return changed
+
+  def on_unwritable_metadata(self, filename):
+    if not self.args.quiet:
+      if self.args.even_if_readonly:
+        # We shouldn't be throwing this exception if we're forcing the
+        # write with --even-if-readonly.
+        raise InvalidProcessorStateException(
+            'Failed to write metadata for ' + filename)
+      else:
+        if self.progress:
+          self.printer.update_last_file(
+              "Couldn't write metadata -- readonly file"
+              + " (force with --even-if-readonly)")
+        else:
+          uniprint("Can't write metadata for readonly file " + filename)
+          uniprint('  (use --even-if-readonly to force writing readonly files)')
 
   def handle_metadata_write(self, filename, mutagen_file, is_new_file):
     did_write = self.write_metadata(filename, mutagen_file, is_new_file)
@@ -556,6 +558,12 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
       # Don't check silent. If the metadata has changed, we will stop
       # fast-forwarding here.
       self.printer.update_last_file('Success!')
+
+  def safe_handle_metadata_write(self, filename, mutagen_file, is_new_file):
+    try:
+      self.handle_metadata_write(filename, mutagen_file, is_new_file)
+    except UnwritableMetadataException:
+      self.on_unwritable_metadata(filename)
 
   @classmethod
   def marshal_mutagen_key(cls, mutagen_file, key, is_complex_type):
@@ -656,29 +664,27 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
 
     return False
 
+  def on_existing_file_skipped(self):
+    if not self.args.quiet:
+      if hasattr(self.args, 'progress') and self.args.progress:
+        self.printer.update_last_file(
+            'File exists (use --update-metadata to write newer metadata)')
+      else:
+        uniprint('Not writing newer metadata because file exists')
+        uniprint('  (use --update-metadata to write metadata anyway)')
+
   def write_metadata(self, filename, mutagen_file, is_new_file):
-    if not is_new_file and not self.args.update_metadata:
-      if not self.args.quiet:
-        if hasattr(self.args, 'progress') and self.args.progress:
-          self.printer.update_last_file(
-              'File exists (use --update-metadata to write newer metadata)')
-        else:
-          uniprint('Not writing newer metadata because file exists')
-          uniprint('  (use --update-metadata to write metadata anyway)')
-      return False
-
-    self.really_write_metadata(filename, mutagen_file, is_new_file)
-
-    # Calling really_write_metadata can throw an exception, so this is safe.
-    return True
-
-  def really_write_metadata(self, filename, mutagen_file, is_new_file):
     if not is_new_file:
+      if not self.args.update_metadata:
+        self.on_existing_file_skipped()
+        return False
       if not self.args.quiet:
         self.printer.update_status('Writing metadata', ' for: ' + filename)
 
     self.maybe_force_write(
         filename, is_new_file, lambda: mutagen_file.save(filename))
+
+    return True
 
   def maybe_force_write(self, filename, is_new_file, forced_write_closure):
     try:
@@ -1031,18 +1037,20 @@ class CopyCommand(CoverArtFileMetadataConfigurableCommand):
 
     is_new_file = self.create_dirs_and_copy(dirname, src, dst, 'track')
 
-    mutagen_file = File(dst, easy=True)
+    if not is_new_file and not self.args.update_metadata:
+      # Check this up here to keep us from opening the file, which is faster.
+      self.metadata_handler.on_existing_file_skipped()
+    else:
+      mutagen_file = File(dst, easy=True)
 
-    if self.is_fast_forwarding and is_new_file:
-      self.is_fast_forwarding = False
+      if self.is_fast_forwarding and is_new_file:
+        self.is_fast_forwarding = False
 
-    # Since we are opening the Mutagen file ourselves, this will not end up
-    # writing the file to the disk (which is exactly what we want).
-    self.handle_file_metadata(dst, track, is_new_file, mutagen_file)
-
-    self.handle_cover(dirpath, track, dirname, dst, mutagen_file)
-
-    mutagen_file.save()
+      # Passing a mutagen file prevents this method from autosaving it.
+      self.handle_file_metadata(dst, track, is_new_file, mutagen_file)
+      self.handle_cover(dirpath, track, dirname, dst, mutagen_file)
+      self.metadata_handler.safe_handle_metadata_write(
+          dst, mutagen_file, is_new_file)
 
     if self.args.write_mtags:
       if dirname not in visited_dirs:

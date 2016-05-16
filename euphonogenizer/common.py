@@ -53,10 +53,8 @@ def unistr(s):
   return str(s)
 
 def write_with_override(filename, do_write, override=True):
-  should_override = override
-
   try:
-    should_override = override()
+    override = override()
   except TypeError:
     pass
 
@@ -64,7 +62,7 @@ def write_with_override(filename, do_write, override=True):
     do_write()
   except IOError:
     # This is probably due to the read-only flag being set, so check it.
-    if should_override:
+    if override:
       if not os.access(filename, os.W_OK):
         # We will just clear the flag temporarily and then set it back.
         mode = os.stat(filename)[stat.ST_MODE]
