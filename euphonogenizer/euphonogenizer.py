@@ -454,7 +454,7 @@ class MutagenFileMetadataHandler(DefaultPrintingConfigurable):
       if self.progress and not silent:
         self.printer.update_status('Checking metadata')
       return self.really_handle_metadata(
-          mutagen_file, track, is_new_file, silent)
+          filename, mutagen_file, track, is_new_file, silent)
 
   def really_handle_metadata(
       self, filename, mutagen_file, track, is_new_file, silent):
@@ -1216,7 +1216,10 @@ class GenerateCommand(AutomaticConfiguringCommand):
 
 
 def provide_configured_command(args):
-  if args.cmd == 'list':
+  if args.cmd is None:
+    parser.print_usage()
+    parser.exit(2, "you must specify a command, like 'list' or 'generate'")
+  elif args.cmd == 'list':
     return ListCommand(args)
   elif args.cmd == 'count':
     return CountCommand(args)
