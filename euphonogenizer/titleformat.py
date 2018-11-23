@@ -930,93 +930,93 @@ def foo_puts(track, memory, va_name_value):
 
 
 foo_function_vtable = {
-    'if': {'2': foo_if_arity2, '3': foo_if_arity3},
-    'if2': {'2': foo_if2},
-    'if3': {'0': foo_false, '1': foo_nop, 'n': foo_if3},
-    'ifequal': {'4': foo_ifequal},
-    'ifgreater': {'4': foo_ifgreater},
-    'iflonger': {'4': foo_iflonger},
-    'select': {'0': foo_false, '1': foo_false, 'n': foo_select},
-    'add': {'0': foo_zero, '1': foo_nop, 'n': foo_add},
-    'div': {'0': foo_false, '1': foo_nop, 'n': foo_div},
-    'greater': {'2': foo_greater},
-    'max': {'0': foo_false, '1': foo_nop, '2': foo_max, 'n': foo_maxN},
-    'min': {'0': foo_false, '1': foo_nop, '2': foo_min, 'n': foo_minN},
-    'mod': {'0': foo_false, '1': foo_nop, '2': foo_mod, 'n': foo_modN},
-    'mul': {'0': foo_one, '1': foo_nop, 'n': foo_mul},
-    'muldiv': {'3': foo_muldiv},
-    'rand': {'0': foo_rand},
-    'sub': {'0': foo_false, 'n': foo_sub},
-    'and': {'0': foo_true, '1': foo_nop, 'n': foo_and},
-    'or': {'0': foo_false, '1': foo_nop, 'n': foo_or},
-    'not': {'1': foo_not},
-    'xor': {'0': foo_false, '1': foo_nop, 'n': foo_xor},
-    'abbr': {'1': foo_abbr_arity1, '2': foo_abbr_arity2},
-    'ansi': {'1': foo_ansi},
-    'ascii': {'1': foo_ascii},
-    'caps': {'1': foo_caps},
-    'caps2': {'1': foo_caps2},
-    'char': {'1': foo_char},
-    'crc32': {'1': foo_crc32},
-    'crlf': {'0': foo_crlf},
-    'cut': {'2': foo_cut},
-    'directory': {'1': foo_directory_arity1, '2': foo_directory_arity2},
-    'directory_path': {'1': foo_directory_path},
-    'ext': {'1': foo_ext},
-    'filename': {'1': foo_filename},
-    'fix_eol': {'1': foo_fix_eol_arity1, '2': foo_fix_eol_arity2},
-    'hex': {'1': foo_hex_arity1, '2': foo_hex_arity2},
-    'insert': {'3': foo_insert},
-    'left': {'2': foo_left},
-    'len': {'1': foo_len},
-    'len2': {'1': foo_len2},
-    'longer': {'2': foo_longer},
-    'lower': {'1': foo_lower},
-    'longest': {'0': foo_false, '1': foo_nop, 'n': foo_longest},
-    'num': {'2': foo_num},
-    'pad': {'2': foo_pad_arity2, '3': foo_pad_arity3},
-    'pad_right': {'2': foo_pad_right_arity2, '3': foo_pad_right_arity3},
-    'padcut': {'2': foo_padcut},
-    'padcut_right': {'2': foo_padcut_right},
-    'progress': {'5': foo_progress},
-    'progress2': {'5': foo_progress2},
-    'repeat': {'2': foo_repeat},
+    'if': {2: foo_if_arity2, 3: foo_if_arity3},
+    'if2': {2: foo_if2},
+    'if3': {0: foo_false, 1: foo_nop, 'n': foo_if3},
+    'ifequal': {4: foo_ifequal},
+    'ifgreater': {4: foo_ifgreater},
+    'iflonger': {4: foo_iflonger},
+    'select': {0: foo_false, 1: foo_false, 'n': foo_select},
+    'add': {0: foo_zero, 1: foo_nop, 'n': foo_add},
+    'div': {0: foo_false, 1: foo_nop, 'n': foo_div},
+    'greater': {2: foo_greater},
+    'max': {0: foo_false, 1: foo_nop, 2: foo_max, 'n': foo_maxN},
+    'min': {0: foo_false, 1: foo_nop, 2: foo_min, 'n': foo_minN},
+    'mod': {0: foo_false, 1: foo_nop, 2: foo_mod, 'n': foo_modN},
+    'mul': {0: foo_one, 1: foo_nop, 'n': foo_mul},
+    'muldiv': {3: foo_muldiv},
+    'rand': {0: foo_rand},
+    'sub': {0: foo_false, 'n': foo_sub},
+    'and': {0: foo_true, 1: foo_nop, 'n': foo_and},
+    'or': {0: foo_false, 1: foo_nop, 'n': foo_or},
+    'not': {1: foo_not},
+    'xor': {0: foo_false, 1: foo_nop, 'n': foo_xor},
+    'abbr': {1: foo_abbr_arity1, 2: foo_abbr_arity2},
+    'ansi': {1: foo_ansi},
+    'ascii': {1: foo_ascii},
+    'caps': {1: foo_caps},
+    'caps2': {1: foo_caps2},
+    'char': {1: foo_char},
+    'crc32': {1: foo_crc32},
+    'crlf': {0: foo_crlf},
+    'cut': {2: foo_cut},
+    'directory': {1: foo_directory_arity1, 2: foo_directory_arity2},
+    'directory_path': {1: foo_directory_path},
+    'ext': {1: foo_ext},
+    'filename': {1: foo_filename},
+    'fix_eol': {1: foo_fix_eol_arity1, 2: foo_fix_eol_arity2},
+    'hex': {1: foo_hex_arity1, 2: foo_hex_arity2},
+    'insert': {3: foo_insert},
+    'left': {2: foo_left},
+    'len': {1: foo_len},
+    'len2': {1: foo_len2},
+    'longer': {2: foo_longer},
+    'lower': {1: foo_lower},
+    'longest': {0: foo_false, 1: foo_nop, 'n': foo_longest},
+    'num': {2: foo_num},
+    'pad': {2: foo_pad_arity2, 3: foo_pad_arity3},
+    'pad_right': {2: foo_pad_right_arity2, 3: foo_pad_right_arity3},
+    'padcut': {2: foo_padcut},
+    'padcut_right': {2: foo_padcut_right},
+    'progress': {5: foo_progress},
+    'progress2': {5: foo_progress2},
+    'repeat': {2: foo_repeat},
     'replace': {
-        '0': foo_false,
-        '1': foo_false,
-        '2': foo_false,
+        0: foo_false,
+        1: foo_false,
+        2: foo_false,
         'n': foo_replace
     },
-    'right': {'2': foo_right},
-    'roman': {'1': foo_roman},
-    'rot13': {'1': foo_rot13},
-    'shortest': {'0': foo_false, '1': foo_nop, 'n': foo_shortest},
-    'strchr': {'2': foo_strchr},
-    'strrchr': {'2': foo_strrchr},
-    'strstr': {'2': foo_strstr},
-    'strcmp': {'2': foo_strcmp},
-    'stricmp': {'2': foo_stricmp},
-    'substr': {'3': foo_substr},
+    'right': {2: foo_right},
+    'roman': {1: foo_roman},
+    'rot13': {1: foo_rot13},
+    'shortest': {0: foo_false, 1: foo_nop, 'n': foo_shortest},
+    'strchr': {2: foo_strchr},
+    'strrchr': {2: foo_strrchr},
+    'strstr': {2: foo_strstr},
+    'strcmp': {2: foo_strcmp},
+    'stricmp': {2: foo_stricmp},
+    'substr': {3: foo_substr},
     'stripprefix': {
-        '0': foo_false,
-        '1': foo_stripprefix_arity1,
+        0: foo_false,
+        1: foo_stripprefix_arity1,
         'n': foo_stripprefix_arityN
     },
     'swapprefix': {
-        '0': foo_false,
-        '1': foo_swapprefix_arity1,
+        0: foo_false,
+        1: foo_swapprefix_arity1,
         'n': foo_swapprefix_arityN
     },
-    'trim': {'1': foo_trim},
-    'tab': {'0': foo_tab_arity0, '1': foo_tab_arity1},
-    'upper': {'1': foo_upper},
-    'meta': {'1': foo_meta_arity1, '2': foo_meta_arity2},
-    'meta_sep': {'2': foo_meta_sep_arity2, '3': foo_meta_sep_arity3},
+    'trim': {1: foo_trim},
+    'tab': {0: foo_tab_arity0, 1: foo_tab_arity1},
+    'upper': {1: foo_upper},
+    'meta': {1: foo_meta_arity1, 2: foo_meta_arity2},
+    'meta_sep': {2: foo_meta_sep_arity2, 3: foo_meta_sep_arity3},
     'meta_test': {'n': foo_meta_test},
-    'meta_num': {'1': foo_meta_num},
-    'get': {'0': foo_false, '1': foo_get},
-    'put': {'2': foo_put},
-    'puts': {'2': foo_puts},
+    'meta_num': {1: foo_meta_num},
+    'get': {0: foo_false, 1: foo_get},
+    'put': {2: foo_put},
+    'puts': {2: foo_puts},
 }
 
 
@@ -1025,35 +1025,38 @@ class FunctionVirtualInvocationException(Exception):
 
 
 def vmarshal(value):
+  if type(value) is EvaluatorAtom:
+    return value
+
+  if value is True or value is False:
+    return EvaluatorAtom('', value)
+
   if value is None:
     return None
 
-  string_value = value
-  truth_value = False
+  return EvaluatorAtom(value, False)
 
+def vlookup(function, arity):
   try:
-    string_value = value.string_value
-    truth_value = value.truth_value
-  except AttributeError:
-    if value is True or value is False:
-      string_value = ''
-      truth_value = value
-
-  return EvaluatorAtom(string_value, truth_value)
-
-def vinvoke(track, function, argv, memory={}):
-  arity = unistr(len(argv))
-  funcref = None
-  try:
-    funcref = foo_function_vtable[function][arity]
+    return foo_function_vtable[function][arity]
   except KeyError:
     try:
-      funcref = foo_function_vtable[function]['n']
+      return foo_function_vtable[function]['n']
     except KeyError:
       message = 'No function with name %s and arity %s exists' % (
           function, arity)
       raise FunctionVirtualInvocationException(message)
+
+def vinvoke(track, function, argv, memory={}):
+  arity = len(argv)
+  funcref = vlookup(function, arity)
   return vmarshal(funcref(track, memory, argv))
+
+def vcallmarshal(atom):
+    if atom is None:
+      return ('', 0)
+
+    return (unistr(atom), 1 if atom else 0)
 
 def foobar_filename_escape(output):
   system = platform.system()
@@ -1352,10 +1355,8 @@ class TitleFormatter:
                   dbg('finished parsing function arglist at char %s' % i, depth)
 
                 if compiling:
-                  compiled.append(
-                      lambda t, self=self, fn=current_fn, argv=current_argv,
-                          depth=depth, offset=offset + fn_offset_start:
-                        self.handle_fn_invocation(t, fn, argv, depth, offset))
+                  compiled.append(self.compile_fn_call(
+                    current_fn, current_argv, depth, offset + fn_offset_start))
                 else:
                   val, edelta = self.handle_fn_invocation(
                       track, current_fn, current_argv,
@@ -1521,9 +1522,13 @@ class TitleFormatter:
     return result
 
   def invoke_jit_eval(self, compiled, depth, track):
-    evaluated = [fn(track) for fn in compiled]
-    output = ''.join(map(lambda e: str(e[0]), evaluated))
-    evaluation_count = sum(map(lambda e: e[1], evaluated))
+    output = ''
+    evaluation_count = 0
+
+    for c in compiled:
+      c_output, c_count = c(track)
+      output += c_output
+      evaluation_count += c_count
 
     if self.debug:
       dbg('jit evaluated, emitting: %s' % repr(evaluated))
@@ -1675,6 +1680,13 @@ class TitleFormatter:
       dbg('mapping %s not found in magic variables' % field_lower, depth)
     return track.get(field)
 
+  def compile_fn_call(
+      self, current_fn, current_argv, depth, offset):
+    fn = vlookup(current_fn, len(current_argv))
+    return (lambda t, fn=fn, argv=current_argv:
+      vcallmarshal(vmarshal(
+        fn(t, {}, [x.curry(t) if hasattr(x, 'curry') else x for x in argv]))))
+
   def handle_fn_invocation(
       self, track, current_fn, current_argv, depth, offset):
     fn_result = self.invoke_function(
@@ -1684,15 +1696,7 @@ class TitleFormatter:
       dbg('finished invoking function %s, value: %s' % (
           current_fn, repr(fn_result)), depth)
 
-    str_fn_result = ''
-    evaluation_count = 0
-
-    if fn_result is not None and fn_result is not False:
-      str_fn_result = unistr(fn_result)
-    if fn_result:
-      evaluation_count += 1
-
-    return (str_fn_result, evaluation_count)
+    return vcallmarshal(fn_result)
 
   def invoke_function(
       self, track, function_name, function_argv, depth=0, offset=0, memory={}):
