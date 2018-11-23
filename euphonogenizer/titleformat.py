@@ -1124,6 +1124,67 @@ class LazyExpression:
     return "lazy(%s)" % repr(self.current)
 
 
+class CurriedCompilation:
+  def __init__(self, lazycomp, track):
+    self.lazycomp = lazycomp
+    self.track = track
+    self.value = None
+
+  def eval(self):
+    if self.value is None:
+      self.value = self.lazycomp(self.track)
+    return self.value
+
+  @property
+  def string_value(self):
+    return self.eval()[0].string_value
+
+  @property
+  def truth_value(self):
+    return self.eval()[0].truth_value
+
+  @property
+  def evaluation_count(self):
+    return self.eval()[1]
+
+  def __repr__(self):
+    return 'curriedcomp(%s)' % repr(self.lazycomp)
+
+
+class LazyCompilation:
+  def __init__(self,
+      formatter, expression, conditional, depth, offset, track_memory,
+      debug=False):
+    self.formatter = formatter
+    self.current = expression
+    self.conditional = conditional
+    self.depth = depth
+    self.offset = offset
+    self.memory = track_memory
+    self.debug = debug
+    self.codeblock = None
+
+  def curry(self, track):
+    return CurriedCompilation(self, track)
+
+  def eval(self, track):
+    if self.codeblock is None:
+      if self.debug:
+        dbg('lazily compiling block: %s' % self.current, self.depth)
+      self.codeblock = self.formatter.eval(
+          None, self.current, self.conditional, self.depth, self.offset,
+          self.memory, True)
+    return self.codeblock(track)
+
+  def __call__(self, track):
+    return self.eval(track)
+
+  def __str__(self):
+    return self.current
+
+  def __repr__(self):
+    return 'lazycomp(cb=%s, %s)' % (repr(self.codeblock), repr(self.current))
+
 class TitleFormatParseException(Exception):
   pass
 
@@ -1143,7 +1204,7 @@ class TitleFormatter:
     return None
 
   def eval(self, track, title_format, conditional=False, depth=0, offset=0,
-      memory={}):
+      memory={}, compiling=False):
     lookbehind = None
     outputting = True
     literal = False
@@ -1164,6 +1225,8 @@ class TitleFormatter:
     current = ''
     current_fn = ''
     current_argv = []
+
+    compiled = []
 
     if self.debug:
       dbg('fresh call to eval(); format="%s" offset=%s' % (
@@ -1213,29 +1276,26 @@ class TitleFormatter:
             raise TitleFormatParseException(message)
           else:
             output += c
+        if compiling and not outputting and len(output) > 0:
+          # This is a state transition; flush buffers to compiled lambda units
+          compiled.append(lambda t, output=output: (output, 0))
+          output = ''
       else:
         if parsing_variable:
           if literal:
             raise TitleFormatParseException(
                 'Invalid parse state: Cannot parse names while in literal mode')
           if c == '%':
-            evaluated_value = self.resolve_variable(track, current, i, depth)
-
-            if self.debug:
-              dbg('value is: %s' % evaluated_value, depth)
-            evaluated_value_str = unistr(evaluated_value)
-            if evaluated_value or evaluated_value == '':
-              if evaluated_value is not True:
-                output += evaluated_value_str
-              evaluation_count += 1
-            elif evaluated_value is not None and evaluated_value is not False:
-              # This is the case where no evaluation happened but there is still
-              # a string value (that won't output conditionally).
-              output += evaluated_value_str
+            if compiling:
+              compiled.append(
+                  lambda t, self=self, current=current, i=i, depth=depth:
+                    self.handle_var_resolution(t, current, i, depth))
             else:
-              output += '?'
-            if self.debug:
-              dbg('evaluation count is now %s' % evaluation_count, depth)
+              val, edelta = self.handle_var_resolution(track, current, i, depth)
+              output += val
+              evaluation_count += edelta
+              if self.debug:
+                dbg('evaluation count is now %s' % evaluation_count, depth)
 
             current = ''
             outputting = True
@@ -1284,29 +1344,30 @@ class TitleFormatter:
               if c == ')':
                 if current != '' or len(current_argv) > 0:
                   current, arg = self.parse_fn_arg(track, current_fn, current,
-                      current_argv, c, i, depth, offset + offset_start, memory)
+                      current_argv, c, i, depth, offset + offset_start, memory,
+                      compiling)
                   current_argv.append(arg)
 
                 if self.debug:
                   dbg('finished parsing function arglist at char %s' % i, depth)
 
-                fn_result = self.invoke_function(
-                    track, current_fn, current_argv,
-                    depth, offset + fn_offset_start)
+                if compiling:
+                  compiled.append(
+                      lambda t, self=self, fn=current_fn, argv=current_argv,
+                          depth=depth, offset=offset + fn_offset_start:
+                        self.handle_fn_invocation(t, fn, argv, depth, offset))
+                else:
+                  val, edelta = self.handle_fn_invocation(
+                      track, current_fn, current_argv,
+                      depth, offset + fn_offset_start)
 
-                if self.debug:
-                  dbg('finished invoking function %s, value: %s' % (
-                      current_fn, repr(fn_result)), depth)
+                  if val:
+                    output += val
 
-                if fn_result is not None and fn_result is not False:
-                  str_fn_result = unistr(fn_result)
-                  if str_fn_result:
-                    output += str_fn_result
-                if fn_result:
-                  evaluation_count += 1
+                  evaluation_count += edelta
 
-                if self.debug:
-                  dbg('evaluation count is now %s' % evaluation_count, depth)
+                  if self.debug:
+                    dbg('evaluation count is now %s' % evaluation_count, depth)
 
                 current_argv = []
                 outputting = True
@@ -1320,7 +1381,8 @@ class TitleFormatter:
                 current += c
               elif c == ',':
                 current, arg = self.parse_fn_arg(track, current_fn, current,
-                    current_argv, c, i, depth, offset + offset_start, memory)
+                    current_argv, c, i, depth, offset + offset_start, memory,
+                    compiling)
                 current_argv.append(arg)
                 offset_start = i + 1
               elif c == '$':
@@ -1375,17 +1437,23 @@ class TitleFormatter:
               else:
                 if self.debug:
                   dbg('finished parsing conditional at char %s' % i, depth)
-                evaluated_value = self.eval(
-                    track, current, True, depth + 1, offset + offset_start,
-                    memory)
 
-                if self.debug:
-                  dbg('value is: %s' % evaluated_value, depth)
-                if evaluated_value:
-                  output += unistr(evaluated_value)
-                  evaluation_count += 1
-                if self.debug:
-                  dbg('evaluation count is now %s' % evaluation_count, depth)
+                if compiling:
+                  compiled.append(LazyCompilation(
+                        self, current, True, depth + 1, offset + offset_start,
+                        memory, self.debug))
+                else:
+                  evaluated_value = self.eval(
+                      track, current, True, depth + 1, offset + offset_start,
+                      memory)
+
+                  if self.debug:
+                    dbg('value is: %s' % evaluated_value, depth)
+                  if evaluated_value:
+                    output += unistr(evaluated_value)
+                    evaluation_count += 1
+                  if self.debug:
+                    dbg('evaluation count is now %s' % evaluation_count, depth)
 
                 current = ''
                 conditional_parse_count = 0
@@ -1432,6 +1500,16 @@ class TitleFormatter:
         dbg('about to return nothing for output: %s' % output, depth)
       return None
 
+    if compiling:
+      if len(output) > 0:
+        # We need to flush the output buffer to a lambda once more
+        compiled.append(lambda t, output=output: (output, 0))
+        output = ''
+      if self.debug:
+        dbg('eval() compiled the input into %s blocks' % len(compiled), depth)
+      return (lambda t, self=self, compiled=compiled, depth=depth:
+        self.invoke_jit_eval(compiled, depth, t))
+
     if depth == 0 and self.for_filename:
       output = foobar_filename_escape(output)
 
@@ -1441,6 +1519,16 @@ class TitleFormatter:
       dbg('eval() is returning: ' + repr(result), depth)
 
     return result
+
+  def invoke_jit_eval(self, compiled, depth, track):
+    evaluated = [fn(track) for fn in compiled]
+    output = ''.join(map(lambda e: str(e[0]), evaluated))
+    evaluation_count = sum(map(lambda e: e[1], evaluated))
+
+    if self.debug:
+      dbg('jit evaluated, emitting: %s' % repr(evaluated))
+
+    return EvaluatorAtom(output, evaluation_count != 0)
 
   def is_valid_var_identifier(self, c):
     return c == ' ' or c == '@' or c == '_' or c == '-' or c.isalnum()
@@ -1483,16 +1571,41 @@ class TitleFormatter:
     return (next_output, next_literal_state, literal_chars_parsed)
 
   def parse_fn_arg(self, track, current_fn, current, current_argv, c, i,
-      depth=0, offset=0, memory={}):
+      depth=0, offset=0, memory={}, compiling=False):
     next_current = ''
 
     if self.debug:
       dbg('finished argument %s for function "%s" at char %s' % (
           len(current_argv), current_fn, i), depth)
+
+    if compiling:
+      lazy = LazyCompilation(self, current, False, depth + 1, offset, memory,
+          self.debug)
+      return (next_current, lazy)
+
     # The lazy expression will parse the current buffer if it's ever needed.
     lazy = LazyExpression(
         self, track, current, False, depth + 1, offset, memory)
     return (next_current, lazy)
+
+  def handle_var_resolution(self, track, field, i, depth):
+    evaluated_value = self.resolve_variable(track, field, i, depth)
+
+    if self.debug:
+      dbg('value is: %s' % evaluated_value, depth)
+
+    evaluated_value_str = unistr(evaluated_value)
+
+    if evaluated_value or evaluated_value == '':
+      if evaluated_value is not True:
+        return (evaluated_value_str, 1)
+      return ('', 1)
+    elif evaluated_value is not None and evaluated_value is not False:
+      # This is the case where no evaluation happened but there is still a
+      # string value (that won't output conditionally).
+      return (evaluated_value_str, 0)
+
+    return ('?', 0)
 
   def resolve_variable(self, track, field, i, depth):
     if field == '':
@@ -1562,10 +1675,32 @@ class TitleFormatter:
       dbg('mapping %s not found in magic variables' % field_lower, depth)
     return track.get(field)
 
+  def handle_fn_invocation(
+      self, track, current_fn, current_argv, depth, offset):
+    fn_result = self.invoke_function(
+        track, current_fn, current_argv, depth, offset)
+
+    if self.debug:
+      dbg('finished invoking function %s, value: %s' % (
+          current_fn, repr(fn_result)), depth)
+
+    str_fn_result = ''
+    evaluation_count = 0
+
+    if fn_result is not None and fn_result is not False:
+      str_fn_result = unistr(fn_result)
+    if fn_result:
+      evaluation_count += 1
+
+    return (str_fn_result, evaluation_count)
+
   def invoke_function(
       self, track, function_name, function_argv, depth=0, offset=0, memory={}):
     if self.debug:
       dbg('invoking function %s, args %s' % (
           function_name, function_argv), depth)
-    return vinvoke(track, function_name, function_argv, memory)
+    curried_argv = [
+        x.curry(track) if hasattr(x, 'curry') else x
+        for x in function_argv]
+    return vinvoke(track, function_name, curried_argv, memory)
 
