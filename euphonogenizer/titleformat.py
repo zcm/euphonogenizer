@@ -1079,6 +1079,19 @@ class EvaluatorAtom:
     self.string_value = string_value
     self.truth_value = truth_value
 
+  def __eq__(self, other):
+    if (isinstance(other, EvaluatorAtom)):
+      return (self.string_value == other.string_value
+          and self.truth_value is other.truth_value)
+    return NotImplemented
+
+  def __ne__(self, other):
+    e = self.__eq__(other)
+    return NotImplemented if e is NotImplemented else not e
+
+  def __hash__(self):
+    return hash(tuple(sorted(self.__dict__.items())))
+
   def __str__(self):
     return str(self.string_value)
 
