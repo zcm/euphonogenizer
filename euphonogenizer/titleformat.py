@@ -4,6 +4,8 @@
 
 from __future__ import unicode_literals
 
+from functools import reduce
+
 import binascii
 import codecs
 import itertools
@@ -85,38 +87,52 @@ def __foo_int(n):
       return 0
   return 0
 
-def __foo_va_conv_n(n):
+def __foo_va_conv_n_unsafe(n):
   strval = ''
   truth = False
 
   integer_value = 0
 
   try:
-    strval = n.string_value
+    strval = n.string_value.strip()
     truth = n.truth_value
   except AttributeError:
     strval = n
+    try:
+      strval = strval.strip()
+    except AttributeError:
+      pass
 
   if strval:
     try:
       integer_value = int(strval)
     except ValueError:
+      start = 1 if strval[0] == '-' else 0
+      last_found_number = -1
       try:
-        start = 1 if strval[0] == '-' else 0
-        last_found_number = -1
-        try:
-          for i in range(start, len(strval)):
-            if int(strval[i]) > 0:
-              last_found_number = i
-        except ValueError:
-          if last_found_number >= 0:
-            integer_value = int(strval[0:last_found_number+1])
+        for i in range(start, len(strval)):
+          if int(strval[i]) >= 0:
+            last_found_number = i
       except ValueError:
-        pass
-      except KeyError:
-        pass
+        if last_found_number >= 0:
+          integer_value = int(strval[0:last_found_number+1])
 
   return EvaluatorAtom(integer_value, truth)
+
+def __foo_va_conv_n(n):
+  try:
+    return __foo_va_conv_n_unsafe(n)
+  except ValueError:
+    pass
+  except KeyError:
+    pass
+
+  try:
+    return EvaluatorAtom(0, n.truth_value)
+  except AttributeError:
+    pass
+
+  return EvaluatorAtom(0, False)
 
 def __foo_va_conv_n_lazy(n):
   try:
@@ -162,6 +178,34 @@ def foo_one(track, memory, va):
 
 def foo_nop(track, memory, va):
   return va[0].eval()
+
+nnop_known_table = {
+    '' : '0',
+    '-' : '0',
+    '-0' : '0',
+}
+
+def foo_nnop(track, memory, va):
+  val = va[0].eval()
+
+  try:
+    try:
+      val.string_value = nnop_known_table[val.string_value]
+      return val
+    except KeyError:
+      pass
+
+    val = __foo_va_conv_n_unsafe(val)
+    val.string_value = unistr(val.string_value)
+    return val
+  except AttributeError:
+    pass
+  except ValueError:
+    pass
+  except KeyError:
+    pass
+
+  return '0'
 
 def foo_if_arity2(track, memory, va_cond_then):
   if va_cond_then[0].eval():
@@ -209,8 +253,16 @@ def foo_select(track, memory, va_n_a1_aN):
 def foo_add(track, memory, va_aN):
   return sum(map(__foo_va_conv_n_lazy_int, va_aN))
 
+def __foo_div_logic(x, y):
+  # Foobar skips division for zeros instead of exploding.
+  y = 1 if y == 0 else y
+  # For some reason, Foobar rounds up when negative and down when positive.
+  if (x < 0) != (y < 0):
+    return x * -1 // y * -1
+  return x // y
+
 def foo_div(track, memory, va_aN):
-  return reduce(lambda x, y: x // y, map(__foo_va_conv_n_lazy_int, va_aN))
+  return reduce(__foo_div_logic, map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_greater(track, memory, va_a_b):
   a = __foo_va_conv_n_lazy_int(va_a_b[0])
@@ -937,8 +989,8 @@ foo_function_vtable = {
     'ifgreater': {4: foo_ifgreater},
     'iflonger': {4: foo_iflonger},
     'select': {0: foo_false, 1: foo_false, 'n': foo_select},
-    'add': {0: foo_zero, 1: foo_nop, 'n': foo_add},
-    'div': {0: foo_false, 1: foo_nop, 'n': foo_div},
+    'add': {0: foo_zero, 1: foo_nnop, 'n': foo_add},
+    'div': {0: foo_false, 1: foo_nnop, 'n': foo_div},
     'greater': {2: foo_greater},
     'max': {0: foo_false, 1: foo_nop, 2: foo_max, 'n': foo_maxN},
     'min': {0: foo_false, 1: foo_nop, 2: foo_min, 'n': foo_minN},
@@ -1453,9 +1505,10 @@ class TitleFormatter:
                   dbg('finished parsing conditional at char %s' % i, depth)
 
                 if compiling:
-                  compiled.append(LazyCompilation(
-                        self, current, True, depth + 1, offset + offset_start,
-                        memory, self.debug))
+                  compiled_cond = self.eval(
+                      None, current, True, depth + 1, offset + offset_start,
+                      memory, True)
+                  compiled.append(lambda t, c=compiled_cond: vcallmarshal(c(t)))
                 else:
                   evaluated_value = self.eval(
                       track, current, True, depth + 1, offset + offset_start,
@@ -1509,11 +1562,6 @@ class TitleFormatter:
 
       raise TitleFormatParseException(message)
 
-    if conditional and evaluation_count == 0:
-      if self.debug:
-        dbg('about to return nothing for output: %s' % output, depth)
-      return None
-
     if compiling:
       if len(output) > 0:
         # We need to flush the output buffer to a lambda once more
@@ -1523,6 +1571,11 @@ class TitleFormatter:
         dbg('eval() compiled the input into %s blocks' % len(compiled), depth)
       return (lambda t, self=self, compiled=compiled, depth=depth:
         self.invoke_jit_eval(compiled, depth, t))
+
+    if conditional and evaluation_count == 0:
+      if self.debug:
+        dbg('about to return nothing for output: %s' % output, depth)
+      return None
 
     if depth == 0 and self.for_filename:
       output = foobar_filename_escape(output)
@@ -1542,9 +1595,6 @@ class TitleFormatter:
       c_output, c_count = c(track)
       output += c_output
       evaluation_count += c_count
-
-    if self.debug:
-      dbg('jit evaluated, emitting: %s' % repr(evaluated))
 
     return EvaluatorAtom(output, evaluation_count != 0)
 
