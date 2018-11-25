@@ -263,19 +263,31 @@ def foo_greater(track, memory, va_a_b):
     return True
   return False
 
+def __foo_max_logic(a, b):
+  if a > b:
+    a |= b
+    return a
+  b |= a
+  return b
+
 def foo_max(track, memory, va_a_b):
-  value = foo_ifgreater(track, memory, va_a_b + va_a_b)
-  return EvaluatorAtom(__foo_int(__foo_va_conv_n(value)), __foo_bool(value))
+  return __foo_max_logic(*map(__foo_va_conv_n_lazy, va_a_b))
 
 def foo_maxN(track, memory, va_aN):
-  return reduce(lambda x, y: foo_max(track, memory, [x, y]), va_aN)
+  return reduce(__foo_max_logic, map(__foo_va_conv_n_lazy, va_aN))
+
+def __foo_min_logic(a, b):
+  if a < b:
+    a |= b
+    return a
+  b |= a
+  return b
 
 def foo_min(track, memory, va_a_b):
-  value = foo_ifgreater(track, memory, va_a_b + reverse(va_a_b))
-  return EvaluatorAtom(__foo_int(__foo_va_conv_n(value)), __foo_bool(value))
+  return __foo_min_logic(*map(__foo_va_conv_n_lazy, va_a_b))
 
 def foo_minN(track, memory, va_aN):
-  return reduce(lambda x, y: foo_min(track, memory, [x, y]), va_aN)
+  return reduce(__foo_min_logic, map(__foo_va_conv_n_lazy, va_aN))
 
 def foo_mod(track, memory, va_a_b):
   a = __foo_va_conv_n_lazy_int(va_a_b[0])
@@ -997,11 +1009,13 @@ foo_function_vtable = {
     'select': {0: foo_false, 1: foo_false, 'n': foo_select},
     'add': {0: foo_zero, 1: foo_nnop, 'n': foo_add},
     'div': {0: foo_false, 1: foo_nnop, 'n': foo_div},
-    'greater': {2: foo_greater},
-    'max': {0: foo_false, 1: foo_nop, 2: foo_max, 'n': foo_maxN},
-    'min': {0: foo_false, 1: foo_nop, 2: foo_min, 'n': foo_minN},
+    # TODO: With strict rules, $greater 'n' should throw exception
+    'greater': {2: foo_greater, 'n': foo_false},
+    'max': {0: foo_false, 1: foo_nnop, 2: foo_max, 'n': foo_maxN},
+    'min': {0: foo_false, 1: foo_nnop, 2: foo_min, 'n': foo_minN},
     'mod': {0: foo_false, 1: foo_nop, 2: foo_mod, 'n': foo_modN},
     'mul': {0: foo_one, 1: foo_nnop, 'n': foo_mul},
+    # TODO: With strict rules, $muldiv 'n' should throw exception
     'muldiv': {3: foo_muldiv, 'n': foo_false},
     'rand': {0: foo_rand},
     'sub': {0: foo_false, 'n': foo_sub},
@@ -1196,6 +1210,26 @@ class EvaluatorAtom:
   def __ne__(self, other):
     e = self.__eq__(other)
     return NotImplemented if e is NotImplemented else not e
+
+  def __gt__(self, other):
+    return self.string_value > other.string_value
+
+  def __lt__(self, other):
+    return self.string_value < other.string_value
+
+  def __and__(self, other):
+    return self.truth_value and other.truth_value
+
+  def __iand__(self, other):
+    self.truth_value &= other.truth_value
+    return self
+
+  def __or__(self, other):
+    return self.truth_value or other.truth_value
+
+  def __ior__(self, other):
+    self.truth_value |= other.truth_value
+    return self
 
   def __hash__(self):
     return hash(tuple(sorted(self.__dict__.items())))
