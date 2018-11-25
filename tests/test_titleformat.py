@@ -69,16 +69,6 @@ test_eval_cases = [
       '[%artist% - ]', 'Collective Soul - ', True, cs_01,
       id='artist_variable_lookup_cond'),
     # Arithmetic: $add()
-    pytest.param('$add()!a$add()', '0!a0', False, {}, id='add_arity0'),
-    pytest.param('$add(123)', '123', False, {}, id='add_arity1'),
-    pytest.param('$add(-)', '0', False, {}, id='add_arity1_dash'),
-    pytest.param('$add(0)', '0', False, {}, id='add_arity1_zero'),
-    pytest.param('$add(-0)', '0', False, {}, id='add_arity1_negative_zero'),
-    pytest.param('$add(007)', '7', False, {}, id='add_arity1_leading_zeroes'),
-    pytest.param('$add(-007)', '-7', False, {},
-      id='add_arity1_negative_leading_zeroes'),
-    pytest.param('$add(12,34)', '46', False, {}, id='add_arity2'),
-    pytest.param('$add(,)', '0', False, {}, id='add_arity2_blanks'),
     pytest.param('$add(1,2,3)', '6', False, {}, id='add_arity3'),
     pytest.param(
         '$add(  -1!a,-1- , -2 -9-  ,-3a bc  )', '-7', False, {},
@@ -111,16 +101,6 @@ test_eval_cases = [
         '$add($add($add(1,$add(5))),$add(2,$add(3,$add(4))))', '15', False, {},
         id='add_arity2_nested_branching_positive_integers'),
     # Arithmetic: $sub()
-    pytest.param('$sub()!a$sub()', '!a', False, {}, id='sub_arity0'),
-    pytest.param('$sub(123)', '123', False, {}, id='sub_arity1'),
-    pytest.param('$sub(-)', '0', False, {}, id='sub_arity1_dash'),
-    pytest.param('$sub(0)', '0', False, {}, id='sub_arity1_zero'),
-    pytest.param('$sub(-0)', '0', False, {}, id='sub_arity1_negative_zero'),
-    pytest.param('$sub(007)', '7', False, {}, id='sub_arity1_leading_zeroes'),
-    pytest.param('$sub(-007)', '-7', False, {},
-      id='sub_arity1_negative_leading_zeroes'),
-    pytest.param('$sub(12,34)', '-22', False, {}, id='sub_arity2'),
-    pytest.param('$sub(,)', '0', False, {}, id='sub_arity2_blanks'),
     pytest.param('$sub(1,2,3)', '-4', False, {}, id='sub_arity3'),
     pytest.param(
         '$sub(  -1!a,-1- , -2 -9-  ,-3a bc  )', '5', False, {},
@@ -156,33 +136,6 @@ test_eval_cases = [
         '$sub($sub($sub(1,$sub(5))),$sub(2,$sub(3,$sub(4))))', '-7', False, {},
         id='sub_arity2_nested_branching_positive_integers'),
     # Arithmetic: $mul()
-    pytest.param('$mul()!a$mul()', '1!a1', False, {}, id='mul_arity0'),
-    pytest.param('$mul(123)', '123', False, {}, id='mul_arity1'),
-    pytest.param('$mul(-456)', '-456', False, {}, id='mul_arity1_negative'),
-    pytest.param('$mul(-)', '0', False, {}, id='mul_arity1_dash'),
-    pytest.param('$mul(0)', '0', False, {}, id='mul_arity1_zero'),
-    pytest.param('$mul(-0)', '0', False, {}, id='mul_arity1_negative_zero'),
-    pytest.param('$mul(70, 20)', '1400', False, {}, id='mul_arity2'),
-    pytest.param('$mul(1000, 10)', '10000', False, {}, id='mul_arity2_10'),
-    pytest.param('$mul(,)', '0', False, {}, id='mul_arity2_blanks'),
-    pytest.param('$mul(-,)', '0', False, {}, id='mul_arity2_dash_blank'),
-    pytest.param('$mul(,-)', '0', False, {}, id='mul_arity2_blank_dash'),
-    pytest.param('$mul(-,-)', '0', False, {}, id='mul_arity2_dashes'),
-    pytest.param(
-        '$mul(-1,-)', '0', False, {},
-        id='mul_arity2_negative_then_dash'),
-    pytest.param('$mul(0, 123)', '0', False, {}, id='mul_arity2_zero'),
-    pytest.param('$mul(1, 0)', '0', False, {}, id='mul_arity2_by_zero'),
-    pytest.param('$mul(0, 0)', '0', False, {}, id='mul_arity2_zero_by_zero'),
-    pytest.param(
-        '$mul(-10, 3)', '-30', False, {},
-        id='mul_arity2_negative_first'),
-    pytest.param(
-        '$mul(10, -3)', '-30', False, {},
-        id='mul_arity2_negative_second'),
-    pytest.param(
-        '$mul(-10, -3)', '30', False, {},
-        id='mul_arity2_negative_both'),
     pytest.param('$mul(128,2,2)', '512', False, {}, id='mul_arity3'),
     pytest.param('$mul(128,0,3)', '0', False, {}, id='mul_arity3_second_zero'),
     pytest.param('$mul(128,5,0)', '0', False, {}, id='mul_arity3_third_zero'),
@@ -190,33 +143,6 @@ test_eval_cases = [
         '$mul(6969,0,-0)', '0', False, {},
         id='mul_arity3_zero_and_negative_zero'),
     # Arithmetic: $div()
-    pytest.param('$div()!a$div()', '!a', False, {}, id='div_arity0'),
-    pytest.param('$div(123)', '123', False, {}, id='div_arity1'),
-    pytest.param('$div(-456)', '-456', False, {}, id='div_arity1_negative'),
-    pytest.param('$div(-)', '0', False, {}, id='div_arity1_dash'),
-    pytest.param('$div(0)', '0', False, {}, id='div_arity1_zero'),
-    pytest.param('$div(-0)', '0', False, {}, id='div_arity1_negative_zero'),
-    pytest.param('$div(1000, 10)', '100', False, {}, id='div_arity2'),
-    pytest.param('$div(,)', '0', False, {}, id='div_arity2_blanks'),
-    pytest.param('$div(-,)', '0', False, {}, id='div_arity2_dash_blank'),
-    pytest.param('$div(,-)', '0', False, {}, id='div_arity2_blank_dash'),
-    pytest.param('$div(-,-)', '0', False, {}, id='div_arity2_dashes'),
-    pytest.param(
-        '$div(-1,-)', '-1', False, {},
-        id='div_arity2_negative_then_dash'),
-    pytest.param('$div(0, 123)', '0', False, {}, id='div_arity2_zero'),
-    pytest.param('$div(1, 0)', '1', False, {}, id='div_arity2_by_zero'),
-    pytest.param('$div(0, 0)', '0', False, {}, id='div_arity2_zero_by_zero'),
-    pytest.param('$div(70, 20)', '3', False, {}, id='div_arity2_rounds_down'),
-    pytest.param(
-        '$div(-10, 3)', '-3', False, {},
-        id='div_arity2_negative_first_rounds_down'),
-    pytest.param(
-        '$div(10, -3)', '-3', False, {},
-        id='div_arity2_negative_second_rounds_down'),
-    pytest.param(
-        '$div(-10, -3)', '3', False, {},
-        id='div_arity2_negative_both_rounds_down'),
     pytest.param('$div(128,2,2)', '32', False, {}, id='div_arity3'),
     pytest.param(
         '$div(128,0,3)', '42', False, {},
@@ -427,59 +353,113 @@ test_eval_cases = [
 ]
 
 
-# Add variable resolution tests
+expected_arity0 = {
+    'add': '0',
+    'sub': '',
+    'mul': '1',
+    'div': '',
+}
+
+
+def div_logic(x, y):
+  if x * y < 0:
+    return x * -1 // (1 if y == 0 else y) * -1
+  return x // (1 if y == 0 else y)
+
+arity2_answer_key = {
+    'add': lambda x, y: x + y,
+    'sub': lambda x, y: x - y,
+    'mul': lambda x, y: x * y,
+    'div': div_logic,
+}
+
+
+# Generate arithmetic tests
 for fn in ('add', 'sub', 'mul', 'div'):
+  # Arity 0 tests
+  expected = expected_arity0[fn]
+  test_eval_cases.append(pytest.param(
+      '$%s()!a$%s()' % (fn, fn),
+      '%s!a%s' % (expected, expected),
+      False, {}, id="arithmetic:arity0<$%s() = '%s'>" % (fn, expected)))
+
+  # Arity 1 tests
   for testarg in (
-      'TOTALDISCS',
-      'TRACKNUMBER',
-      'ARTIST',
-      'MISSING',
+      '123', '-456', '-', '0', '-0', '007', '-007',
+      '%TOTALDISCS%', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%',
   ):
+    testarg_stripped = testarg.strip('%')
     # default, if it's not in the track
-    expected = {
-        'add': '0',
-        'sub': '0',
-        'mul': '0',
-        'div': '0',
-    }[fn]
+    expected = '0'
     try:
-      if testarg in cs_01:
-        expected = unistr(int(cs_01[testarg]))
+      expected = unistr(int(testarg))
     except ValueError:
-      pass
+      try:
+        if testarg_stripped in cs_01:
+          expected = unistr(int(cs_01[testarg_stripped]))
+      except ValueError:
+        pass
 
+    fmt = '$%s(%s)' % (fn, testarg)
     test_eval_cases.append(pytest.param(
-        '$%s(%%%s%%)' % (fn, testarg),
-        expected,
-        testarg in cs_01,
-        cs_01,
-        id='arity1_variable_resolution(%s, %s)' % (fn, testarg)))
+        fmt, expected, testarg_stripped in cs_01, cs_01,
+        id='arithmetic:arity1<%s = %s>' % (fmt, expected)))
 
-  arity2_answer_key = {
-      'add': lambda x, y: x + y,
-      'sub': lambda x, y: x - y,
-      'mul': lambda x, y: x * y,
-      'div': lambda x, y: x // (1 if y == 0 else y),
-  }
-
+  # Arity 2 tests
   for t1, t2 in (
-      ('TOTALDISCS', 1),
-      (3, 'TOTALDISCS'),
-      ('TOTALDISCS', 'TOTALDISCS'),
-      ('MISSING', 'TOTALDISCS'),
-      ('TOTALDISCS', 'MISSING'),
-      ('MISSING', 'MISSING'),
+      (12, 34),
+      (70, 20),
+      (1000, 10),
+      (10, 3),
+      (-10, 3),
+      (10, -3),
+      (-10, -3),
+      (123, 0),
+      (0, 123),
+      (0, 0),
+      (0, 10),
+      (10, 0),
+      (100, 0),
+      (0, 100),
+      (1, 1),
+      (1, 10),
+      (10, 1),
+      (1, 100),
+      (100, 1),
+      (-1, 1),
+      (1, -1),
+      (-1, -1),
+      (-1, 100),
+      (1, -100),
+      (-100, -1),
+      (-1, 0),
+      (0, -1),
+      (0, '-0'),
+      ('-0', 0),
+      ('-0', '-0'),
+      (1, '-0'),
+      ('-0', 1),
+      ('', ''),
+      ('-', ''),
+      ('', '-'),
+      ('-', '-'),
+      (-1,'-'),
+      ('%TOTALDISCS%', 1),
+      (3, '%TOTALDISCS%'),
+      ('%TOTALDISCS%', '%TOTALDISCS%'),
+      ('%MISSING%', '%TOTALDISCS%'),
+      ('%TOTALDISCS%', '%MISSING%'),
+      ('%MISSING%', '%MISSING%'),
   ):
-    first = t1 if type(t1) is int else '%' + t1 + '%'
-    second = t2 if type(t2) is int else '%' + t2 + '%'
-    val1 = t1 if type(t1) is int else int(cs_01[t1]) if t1 in cs_01 else 0
-    val2 = t2 if type(t2) is int else int(cs_01[t2]) if t2 in cs_01 else 0
+    fmt = '$%s(%s,%s)' % (fn, t1, t2)
+    t1s = unistr(t1).strip('%')
+    t2s = unistr(t2).strip('%')
+    val1 = t1 if type(t1) is int else int(cs_01[t1s]) if t1s in cs_01 else 0
+    val2 = t2 if type(t2) is int else int(cs_01[t2s]) if t2s in cs_01 else 0
+    expected = unistr(arity2_answer_key[fn](val1, val2))
     test_eval_cases.append(pytest.param(
-        '$%s(%s,%s)' % (fn, first, second),
-        unistr(arity2_answer_key[fn](val1, val2)),
-        t1 in cs_01 or t2 in cs_01,
-        cs_01,
-        id='arity2_variable_resolution(%s, %s, %s)' % (fn, t1, t2)))
+        fmt, expected, t1s in cs_01 or t2s in cs_01, cs_01,
+        id="arithmetic:arity2<%s = '%s'>" % (fmt, expected)))
 
 # Add min/max tests
 for fn in ('min', 'max'):
