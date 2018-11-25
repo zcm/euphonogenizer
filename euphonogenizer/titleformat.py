@@ -135,13 +135,7 @@ def __foo_va_conv_n(n):
   return EvaluatorAtom(0, False)
 
 def __foo_va_conv_n_lazy(n):
-  try:
-    value = n.eval()
-    if value.string_value:
-      return __foo_va_conv_n(value.string_value)
-  except AttributeError:
-    return n
-  return 0
+  return __foo_va_conv_n(n.eval())
 
 def __foo_va_conv_bool_lazy(b):
   try:
@@ -251,18 +245,16 @@ def foo_select(track, memory, va_n_a1_aN):
     return va_n_a1_aN[n].eval()
 
 def foo_add(track, memory, va_aN):
-  return sum(map(__foo_va_conv_n_lazy_int, va_aN))
-
-def __foo_div_logic(x, y):
-  # Foobar skips division for zeros instead of exploding.
-  y = 1 if y == 0 else y
-  # For some reason, Foobar rounds up when negative and down when positive.
-  if (x < 0) != (y < 0):
-    return x * -1 // y * -1
-  return x // y
+  value = __foo_va_conv_n_lazy(va_aN[0])
+  for a in va_aN[1:]:
+    value += __foo_va_conv_n_lazy(a)
+  return value
 
 def foo_div(track, memory, va_aN):
-  return reduce(__foo_div_logic, map(__foo_va_conv_n_lazy_int, va_aN))
+  value = __foo_va_conv_n_lazy(va_aN[0])
+  for a in va_aN[1:]:
+    value //= __foo_va_conv_n_lazy(a)
+  return value
 
 def foo_greater(track, memory, va_a_b):
   a = __foo_va_conv_n_lazy_int(va_a_b[0])
@@ -297,18 +289,32 @@ def foo_modN(track, memory, va_aN):
       map(__foo_va_conv_n_lazy_int, va_aN))
 
 def foo_mul(track, memory, va_aN):
-  return reduce(lambda x, y: x * y, map(__foo_va_conv_n_lazy_int, va_aN))
+  value = __foo_va_conv_n_lazy(va_aN[0])
+  for a in va_aN[1:]:
+    value *= __foo_va_conv_n_lazy(a)
+  return value
 
 def foo_muldiv(track, memory, va_a_b_c):
-  c = __foo_va_conv_n_lazy_int(va_a_b_c[2])
-  return (foo_mul(track, memory, [va_a_b_c[0], va_a_b_c[1]]) + c // 2) // c
+  c = __foo_va_conv_n_lazy(va_a_b_c[2])
+  c.truth_value = True  # Truth behavior confirmed by experimentation.
+  if c.string_value == 0:
+    # This is real Foobar behavior for some reason, probably a bug.
+    c.string_value = -1
+    return c
+  a = __foo_va_conv_n_lazy(va_a_b_c[0])
+  a *= __foo_va_conv_n_lazy(va_a_b_c[1])
+  a //= c
+  return a
 
 def foo_rand(track, memory, va):
   random.seed()
   return random.randint(0, sys.maxint)
 
 def foo_sub(track, memory, va_aN):
-  return reduce(lambda x, y: x - y, map(__foo_va_conv_n_lazy_int, va_aN))
+  value = __foo_va_conv_n_lazy(va_aN[0])
+  for a in va_aN[1:]:
+    value -= __foo_va_conv_n_lazy(a)
+  return value
 
 def foo_and(track, memory, va_N):
   for each in va_N:
@@ -995,8 +1001,8 @@ foo_function_vtable = {
     'max': {0: foo_false, 1: foo_nop, 2: foo_max, 'n': foo_maxN},
     'min': {0: foo_false, 1: foo_nop, 2: foo_min, 'n': foo_minN},
     'mod': {0: foo_false, 1: foo_nop, 2: foo_mod, 'n': foo_modN},
-    'mul': {0: foo_one, 1: foo_nop, 'n': foo_mul},
-    'muldiv': {3: foo_muldiv},
+    'mul': {0: foo_one, 1: foo_nnop, 'n': foo_mul},
+    'muldiv': {3: foo_muldiv, 'n': foo_false},
     'rand': {0: foo_rand},
     'sub': {0: foo_false, 'n': foo_sub},
     'and': {0: foo_true, 1: foo_nop, 'n': foo_and},
@@ -1130,6 +1136,56 @@ class EvaluatorAtom:
   def __init__(self, string_value, truth_value):
     self.string_value = string_value
     self.truth_value = truth_value
+
+  def __add__(self, other):
+    return EvaluatorAtom(
+        self.string_value + other.string_value,
+        self.truth_value or other.truth_value)
+
+  def __iadd__(self, other):
+    self.string_value += other.string_value
+    self.truth_value |= other.truth_value
+    return self
+
+  def __sub__(self, other):
+    return EvaluatorAtom(
+        self.string_value - other.string_value,
+        self.truth_value or other.truth_value)
+
+  def __isub__(self, other):
+    self.string_value -= other.string_value
+    self.truth_value |= other.truth_value
+    return self
+
+  def __mul__(self, other):
+    return EvaluatorAtom(
+        self.string_value * other.string_value,
+        self.truth_value or other.truth_value)
+
+  def __imul__(self, other):
+    self.string_value *= other.string_value
+    self.truth_value |= other.truth_value
+    return self
+
+  def __foo_div_logic(self, x, y):
+    if y == 0:
+      # Foobar skips division for zeros instead of exploding.
+      y = 1
+    # For some reason, Foobar rounds up when negative and down when positive.
+    if x * y < 0:
+      return x * -1 // y * -1
+    return x // y
+
+  def __floordiv__(self, other):
+    return EvaluatorAtom(
+        self.__foo_div_logic(self.string_value, other.string_value),
+        self.truth_value or other.truth_value)
+
+  def __ifloordiv__(self, other):
+    self.string_value = self.__foo_div_logic(
+        self.string_value, other.string_value)
+    self.truth_value |= other.truth_value
+    return self
 
   def __eq__(self, other):
     if (isinstance(other, EvaluatorAtom)):
