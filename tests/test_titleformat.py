@@ -5,6 +5,7 @@
 from euphonogenizer import titleformat
 from euphonogenizer.common import unistr
 
+import sys
 import pytest
 
 cs_01 = {
@@ -353,147 +354,174 @@ test_eval_cases = [
 ]
 
 
-expected_arity0 = {
-    'add': '0',
-    'sub': '',
-    'mul': '1',
-    'div': '',
-}
+def __div_logic(x, y):
+  if y == 0: return x
+  if x == 0: return 0
+  if x * y < 0:
+    return x * -1 // y * -1
+  return x // y
 
 
 def div_logic(x, y):
-  if x * y < 0:
-    return x * -1 // (1 if y == 0 else y) * -1
-  return x // (1 if y == 0 else y)
+  r = __div_logic(x, y)
+  return r
 
-arity2_answer_key = {
-    'add': lambda x, y: x + y,
-    'sub': lambda x, y: x - y,
-    'mul': lambda x, y: x * y,
-    'div': div_logic,
+
+expected_resolutions = {
+    'add': {'arity0': '0', 'var': 0, 'answer': lambda x, y: x + y},
+    'sub': {'arity0': '' , 'var': 0, 'answer': lambda x, y: x - y},
+    'mul': {'arity0': '1', 'var': 0, 'answer': lambda x, y: x * y},
+    'div': {'arity0': '' , 'var': 0, 'answer': div_logic},
 }
 
 
+def resolve_int_var(fn, v, track):
+  try:
+    return int(v)
+  except ValueError:
+    pass
+
+  r = int(track[v]) if v in track else expected_resolutions[fn]['var']
+  return r
+
+
 # Generate arithmetic tests
-for fn in ('add', 'sub', 'mul', 'div'):
-  # Arity 0 tests
-  expected = expected_arity0[fn]
-  test_eval_cases.append(pytest.param(
-      '$%s()!a$%s()' % (fn, fn),
-      '%s!a%s' % (expected, expected),
-      False, {}, id="arithmetic:arity0<$%s() = '%s'>" % (fn, expected)))
+def generate_arithmetic_tests():
+  generated_cases = []
+  for fn in ('add', 'sub', 'mul', 'div'):
+    # Arity 0 tests
+    expected = expected_resolutions[fn]['arity0']
+    generated_cases.append(pytest.param(
+        '$%s()!a$%s()' % (fn, fn),
+        '%s!a%s' % (expected, expected),
+        False, {}, id="arithmetic:arity0<$%s() = '%s'>" % (fn, expected)))
 
-  # Arity 1 tests
-  for testarg in (
-      '123', '-456', '-', '0', '-0', '007', '-007',
-      '%TOTALDISCS%', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%',
-  ):
-    testarg_stripped = testarg.strip('%')
-    # default, if it's not in the track
-    expected = '0'
-    try:
-      expected = unistr(int(testarg))
-    except ValueError:
+    # Arity 1 tests
+    for testarg in (
+        '123', '-456', '-', '0', '-0', '007', '-007', '?',
+        '%TOTALDISCS%', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%',
+    ):
+      testarg_stripped = testarg.strip('%')
+      # default, if it's not in the track
+      expected = '0'
       try:
-        if testarg_stripped in cs_01:
-          expected = unistr(int(cs_01[testarg_stripped]))
+        expected = unistr(int(testarg))
       except ValueError:
-        pass
+        try:
+          if testarg_stripped in cs_01:
+            expected = unistr(int(cs_01[testarg_stripped]))
+        except ValueError:
+          pass
 
-    fmt = '$%s(%s)' % (fn, testarg)
-    test_eval_cases.append(pytest.param(
-        fmt, expected, testarg_stripped in cs_01, cs_01,
-        id='arithmetic:arity1<%s = %s>' % (fmt, expected)))
+      fmt = '$%s(%s)' % (fn, testarg)
+      generated_cases.append(pytest.param(
+          fmt, expected, testarg_stripped in cs_01, cs_01,
+          id='arithmetic:arity1<%s = %s>' % (fmt, expected)))
+      if testarg[0] == '%':
+        # Attempts to negate a variable resolution actually work somehow!
+        fmt = '$%s(-%s)' % (fn, testarg)
+        generated_cases.append(pytest.param(
+            fmt, unistr(int(expected) * -1), testarg_stripped in cs_01, cs_01,
+            id='arithmetic:arity1<%s = %s>' % (fmt, expected)))
 
-  # Arity 2 tests
-  for t1, t2 in (
-      (12, 34),
-      (70, 20),
-      (1000, 10),
-      (10, 3),
-      (-10, 3),
-      (10, -3),
-      (-10, -3),
-      (123, 0),
-      (0, 123),
-      (0, 0),
-      (0, 10),
-      (10, 0),
-      (100, 0),
-      (0, 100),
-      (1, 1),
-      (1, 10),
-      (10, 1),
-      (1, 100),
-      (100, 1),
-      (-1, 1),
-      (1, -1),
-      (-1, -1),
-      (-1, 100),
-      (1, -100),
-      (-100, -1),
-      (-1, 0),
-      (0, -1),
-      (0, '-0'),
-      ('-0', 0),
-      ('-0', '-0'),
-      (1, '-0'),
-      ('-0', 1),
-      ('', ''),
-      ('-', ''),
-      ('', '-'),
-      ('-', '-'),
-      (-1,'-'),
-      ('%TOTALDISCS%', 1),
-      (3, '%TOTALDISCS%'),
-      ('%TOTALDISCS%', '%TOTALDISCS%'),
-      ('%MISSING%', '%TOTALDISCS%'),
-      ('%TOTALDISCS%', '%MISSING%'),
-      ('%MISSING%', '%MISSING%'),
-  ):
-    fmt = '$%s(%s,%s)' % (fn, t1, t2)
-    t1s = unistr(t1).strip('%')
-    t2s = unistr(t2).strip('%')
-    val1 = t1 if type(t1) is int else int(cs_01[t1s]) if t1s in cs_01 else 0
-    val2 = t2 if type(t2) is int else int(cs_01[t2s]) if t2s in cs_01 else 0
-    expected = unistr(arity2_answer_key[fn](val1, val2))
-    test_eval_cases.append(pytest.param(
-        fmt, expected, t1s in cs_01 or t2s in cs_01, cs_01,
-        id="arithmetic:arity2<%s = '%s'>" % (fmt, expected)))
+
+    # Arity 2 tests
+    for t1, t2 in (
+        (12, 34), (70, 20), (1000, 10), (10, 3), (-10, 3), (10, -3), (-10, -3),
+        (123, 0), (0, 123), (0, 0), (0, 10), (10, 0), (100, 0), (0, 100),
+        (1, 1), (1, 10), (10, 1), (1, 100), (100, 1), (-1, 1), (1, -1),
+        (-1, -1), (-1, 100), (1, -100), (-100, -1), (-1, 0), (0, -1), (0, '-0'),
+        ('-0', 0), ('-0', '-0'), (1, '-0'), ('-0', 1), ('', ''), ('-', ''),
+        ('', '-'), ('-', '-'), (-1,'-'), ('?', '?'), ('-?', '?'),
+        ('%TOTALDISCS%', 1),
+        (3, '%TOTALDISCS%'),
+        ('%TOTALDISCS%', '?'),
+        ('?', '%TOTALDISCS%'),
+        ('%TOTALDISCS%', '%TOTALDISCS%'),
+        ('%MISSING%', '%TOTALDISCS%'),
+        ('%TOTALDISCS%', '%MISSING%'),
+        ('%MISSING%', '%MISSING%'),
+    ):
+      for g1, g2, g3, g4 in (  # Also generate some garbage text to test with
+          ('', '', '', ''),  # The default, no garbage
+          ('', '--', '', '--'),
+          ('', '!a', '', "','"),
+          ('', "','", '', '!a'),
+          ('  ', '  ', ' ', ' '),
+          ('  ', " ',' ", " ',' ", " ',' "),
+      ):
+        t1g = '%s%s%s' % (g1, t1, g2)
+        t2g = '%s%s%s' % (g3, t2, g4)
+        fmt = '$%s(%s,%s)' % (fn, t1g, t2g)
+        stripchars = "% -!a',"
+        t1s = unistr(t1g).lstrip('% ').rstrip(stripchars)
+        t2s = unistr(t2g).lstrip('% ').rstrip("% -!a',")
+        val1 = resolve_int_var(fn, t1s, cs_01)
+        val2 = resolve_int_var(fn, t2s, cs_01)
+        expected = unistr(expected_resolutions[fn]['answer'](val1, val2))
+        expected_truth = (
+            t1s.strip(stripchars) in cs_01
+            or t2s.strip(stripchars) in cs_01)
+        generated_cases.append(pytest.param(
+            fmt, expected, expected_truth, cs_01,
+            id="arithmetic:arity2<%s = '%s'>" % (fmt, expected)))
+  return generated_cases
+
+
+test_eval_cases += generate_arithmetic_tests()
+
 
 # Add min/max tests
 for fn in ('min', 'max'):
-  for cases in (
+  for case in (
       (['0'], '0', False),
       (['123'], '123', False),
       (['-'], '0', False),
       (['',''], '0', False),
-      (['2','1'], '1' if fn == 'min' else '2', False),
-      (['-2','1'], '-2' if fn == 'min' else '1', False),
-      (['1','2'], '1' if fn == 'min' else '2', False),
-      (['-1','2'], '-1' if fn == 'min' else '2', False),
+      (['2','1'], '1', '2', False),
+      (['-2','1'], '-2', '1', False),
+      (['1','2'], '1', '2', False),
+      (['-1','2'], '-1', '2', False),
       (['','',''], '0', False),
-      (['-1','-2','-3'], '-3' if fn == 'min' else '-1', False),
-      (['','-2','-3'], '-3' if fn == 'min' else '0', False),
-      (['-2','-1','3', '2', ''], '-2' if fn == 'min' else '3', False),
+      (['-1','-2','-3'], '-3', '-1', False),
+      (['','-2','-3'], '-3', '0', False),
+      (['-2','-1','3', '2', ''], '-2', '3', False),
       (['%missing%'], '0', False),
       (['%totaltracks%'], cs_01['TOTALTRACKS'], True),
       (['%missing%', '%missing%'], '0', False),
       (['%totaltracks%', '%missing%'],
-        '0' if fn == 'min' else cs_01['TOTALTRACKS'], True),
+        '0', cs_01['TOTALTRACKS'], True),
       (['%missing%', '%totaltracks%'],
-        '0' if fn == 'min' else cs_01['TOTALTRACKS'], True),
+        '0', cs_01['TOTALTRACKS'], True),
       (['%missing%', '%missing%', '%missing%'], '0', False),
       (['%totaltracks%', '%missing%', '%missing%'],
-        '0' if fn == 'min' else cs_01['TOTALTRACKS'], True),
+        '0', cs_01['TOTALTRACKS'], True),
       (['%missing%', '%totaltracks%', '%missing%'],
-        '0' if fn == 'min' else cs_01['TOTALTRACKS'], True),
+        '0', cs_01['TOTALTRACKS'], True),
       (['%missing%', '%missing%', '%totaltracks%'],
-        '0' if fn == 'min' else cs_01['TOTALTRACKS'], True),
+        '0', cs_01['TOTALTRACKS'], True),
   ):
+    caselen = len(case)
+    fmt = '$%s(%s)' % (fn, ','.join(case[0]))
+    min_expected = case[1]
+    max_expected = case[-2]
+    expected = min_expected if fn == 'min' else max_expected
+    expected_truth = case[-1]
+    arity = len(case[0])
+
     test_eval_cases.append(pytest.param(
-      '$%s(%s)' % (fn, ','.join(cases[0])), cases[1], cases[2], cs_01,
-      id='%s_arity%s(%s)' % (fn, len(cases[0]), ','.join(cases[0]))))
+      fmt, expected, expected_truth, cs_01,
+      id="arithmetic:arity%s(%s = '%s')" % (arity, fmt, expected)))
+    # Now check for variable negation
+    if len([e1 for e1 in filter((
+        lambda x: len([e2 for e2 in filter((
+          lambda y: '%' in y), x)]) > 0), case[0])]) > 0:
+      negated = ['-' + x for x in case[0]]
+      expected = unistr(-int(max_expected if fn == 'min' else min_expected))
+      fmt = '$%s(%s)' % (fn, ','.join(negated))
+      test_eval_cases.append(pytest.param(
+        fmt, expected, expected_truth, cs_01,
+        id="arithmetic:arity%s(%s = '%s')" % (arity, fmt, expected)))
 
 
 class TestTitleFormatter:
@@ -515,10 +543,11 @@ class TestTitleFormatter:
     assert result.truth_value is expected_truth
 
     if compiled:
-      fb = f.eval(None, fmt, compiling=True)
+      fn = f.eval(None, fmt, compiling=True)
       quiet_result = fn(track)
     else:
       quiet_result = f.eval(track, fmt)
 
-    assert quiet_result == result
+    assert quiet_result.string_value == expected
+    assert quiet_result.truth_value is expected_truth
 
