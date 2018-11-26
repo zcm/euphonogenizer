@@ -1030,9 +1030,10 @@ foo_function_vtable = {
     'muldiv': {3: foo_muldiv, 'n': foo_false},
     'rand': {0: foo_rand},
     'sub': {0: foo_false, 'n': foo_sub},
-    'and': {0: foo_true, 1: foo_nop, 'n': foo_and},
-    'or': {0: foo_false, 1: foo_nop, 'n': foo_or},
-    'not': {1: foo_not},
+    'and': {0: foo_true, 'n': foo_and},
+    'or': {0: foo_false, 'n': foo_or},
+    # TODO: With strict rules, $not 'n' should throw exception
+    'not': {0: foo_false, 1: foo_not, 'n': foo_false},
     'xor': {0: foo_false, 1: foo_nop, 'n': foo_xor},
     'abbr': {1: foo_abbr_arity1, 2: foo_abbr_arity2},
     'ansi': {1: foo_ansi},

@@ -344,13 +344,28 @@ def mod_logic(x, y):
   return r
 
 
-expected_resolutions = {
-    'add': {'arity0': '0', 'var': 0, 'answer': lambda x, y: x + y},
-    'sub': {'arity0': '' , 'var': 0, 'answer': lambda x, y: x - y},
-    'mul': {'arity0': '1', 'var': 0, 'answer': lambda x, y: x * y},
-    'div': {'arity0': '' , 'var': 0, 'answer': div_logic},
-    'mod': {'arity0': '' , 'var': 0, 'answer': mod_logic},
+arithmetic_resolutions = {
+    'add': {'arity0': ('0', False), 'var': 0, 'answer': lambda x, y: x + y},
+    'sub': {'arity0': ('', False) , 'var': 0, 'answer': lambda x, y: x - y},
+    'mul': {'arity0': ('1', False), 'var': 0, 'answer': lambda x, y: x * y},
+    'div': {'arity0': ('', False) , 'var': 0, 'answer': div_logic},
+    'mod': {'arity0': ('', False) , 'var': 0, 'answer': mod_logic},
 }
+
+boolean_resolutions = {
+    'and': {'arity0': ('', True),  'var': '', 'answer': lambda x, y: x and y},
+    'or':  {'arity0': ('', False), 'var': '', 'answer': lambda x, y: x or y},
+    'not': {'arity0': ('', False), 'var': '', 'answer': lambda x: not x},
+}
+
+for key in arithmetic_resolutions:
+  arithmetic_resolutions[key]['group'] = 'arithmetic'
+
+for key in boolean_resolutions:
+  boolean_resolutions[key]['group'] = 'boolean'
+
+expected_resolutions = arithmetic_resolutions.copy()
+expected_resolutions.update(boolean_resolutions)
 
 
 def resolve_int_var(fn, v, track):
@@ -359,21 +374,35 @@ def resolve_int_var(fn, v, track):
   except ValueError:
     pass
 
-  r = int(track[v]) if v in track else expected_resolutions[fn]['var']
+  try:
+    r = int(track[v]) if v in track else expected_resolutions[fn]['var']
+  except ValueError:
+    return track[v]
   return r
 
 
-# Generate arithmetic tests
-def generate_arithmetic_tests():
+# Generate arithmetic and boolean tests
+def generate_tests():
   generated_cases = []
   stripchars = "% -!abc',"
   for fn in expected_resolutions.keys():
+    group = expected_resolutions[fn]['group']
+
     # Arity 0 tests
-    expected = expected_resolutions[fn]['arity0']
+    fmt = '$%s()' % fn
+    expected = expected_resolutions[fn]['arity0'][0]
+    expected_truth = expected_resolutions[fn]['arity0'][1]
     generated_cases.append(pytest.param(
-        '$%s()!a$%s()' % (fn, fn),
-        '%s!a%s' % (expected, expected),
-        False, {}, id="arithmetic:arity0<$%s() = '%s'>" % (fn, expected)))
+        fmt, expected, expected_truth, {},
+        id="%s:arity0<%s = '%s'>" % (group, fmt, expected)))
+
+    fmt = '$%s()!a$%s()' % (fn, fn)
+    expected = '%s!a%s' % (expected, expected)
+    generated_cases.append(pytest.param(
+        fmt, expected, expected_truth, {},
+        id="%s:arity0<$%s() = '%s'>" % (group, fn, expected)))
+
+    answer = expected_resolutions[fn]['answer']
 
     # Arity 1 tests
     for testarg in (
@@ -381,29 +410,36 @@ def generate_arithmetic_tests():
         '%TOTALDISCS%', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%',
     ):
       testarg_stripped = testarg.strip('%')
-      # default, if it's not in the track
-      expected = '0'
-      try:
-        expected = unistr(int(testarg))
-      except ValueError:
-        try:
-          if testarg_stripped in cs_01:
-            expected = unistr(int(cs_01[testarg_stripped]))
-        except ValueError:
-          pass
-
       fmt = '$%s(%s)' % (fn, testarg)
+
+      if group == 'arithmetic':
+        expected = unistr(resolve_int_var(fn, testarg_stripped, cs_01))
+        try:
+          expected = unistr(int(expected))
+        except ValueError:
+          expected = '0'
+      elif group == 'boolean':
+        expected = ''
+
+      expected_truth = testarg_stripped in cs_01
+
+      try:
+        # If there's an arity 1 answer, use it.
+        expected_truth = answer(expected_truth)
+      except TypeError:
+        pass
+
       generated_cases.append(pytest.param(
-          fmt, expected, testarg_stripped in cs_01, cs_01,
-          id='arithmetic:arity1<%s = %s>' % (fmt, expected)))
-      if testarg[0] == '%':
+          fmt, expected, expected_truth, cs_01,
+          id="%s:arity1<%s = '%s'>" % (group, fmt, expected)))
+
+      if testarg[0] == '%' and group == 'arithmetic':
         # Attempts to negate a variable resolution actually work somehow!
         fmt = '$%s(-%s)' % (fn, testarg)
+        expected = unistr(int(expected) * -1)
         generated_cases.append(pytest.param(
-            fmt, unistr(int(expected) * -1), testarg_stripped in cs_01, cs_01,
-            id='arithmetic:arity1<%s = %s>' % (fmt, expected)))
-
-    answer = expected_resolutions[fn]['answer']
+            fmt, expected, testarg_stripped in cs_01, cs_01,
+            id="%s:arity1<%s = '%s'>" % (group, fmt, expected)))
 
     # Arity 2 tests
     for t1, t2 in (
@@ -430,6 +466,13 @@ def generate_arithmetic_tests():
           ('  ', '  ', ' ', ' '),
           ('  ', " ',' ", " ',' ", " ',' "),
       ):
+        if fn == 'not' and (
+            g2 != ''
+            or type(t1) is int and (-1 > t1 or t1 > 1)
+            or type(t2) is int and (-1 > t2 or t2 > 1)
+        ):
+          # We really don't need to test $not that much for arity 2.
+          continue
         t1g = '%s%s%s' % (g1, t1, g2)
         t2g = '%s%s%s' % (g3, t2, g4)
         fmt = '$%s(%s,%s)' % (fn, t1g, t2g)
@@ -437,13 +480,27 @@ def generate_arithmetic_tests():
         t2s = t2g.lstrip('% ').rstrip(stripchars)
         val1 = resolve_int_var(fn, t1s, cs_01)
         val2 = resolve_int_var(fn, t2s, cs_01)
-        expected = unistr(answer(val1, val2))
-        expected_truth = (
-            t1s.strip(stripchars) in cs_01
-            or t2s.strip(stripchars) in cs_01)
+
+        if group == 'arithmetic':
+          expected = unistr(answer(val1, val2))
+          expected_truth = (
+              t1s.strip(stripchars) in cs_01
+              or t2s.strip(stripchars) in cs_01)
+        elif group == 'boolean':
+          expected = ''
+          try:
+            expected_truth = answer(t1 == '%TOTALDISCS%', t2 == '%TOTALDISCS%')
+          except TypeError:
+            # Assume False, this is probably $not.
+            expected_truth = False
+
         generated_cases.append(pytest.param(
             fmt, expected, expected_truth, cs_01,
-            id="arithmetic:arity2<%s = '%s'>" % (fmt, expected)))
+            id="%s:arity2<%s = '%s'>" % (group, fmt, expected)))
+
+    if fn == 'not':
+      # We really don't need to test $not beyond arity 2.
+      continue
 
     # Arity 3+ tests
     for t in (
@@ -487,19 +544,31 @@ def generate_arithmetic_tests():
                 x.lstrip('% ').replace('2 -9-', '2').rstrip(stripchars),
               map(unistr, t))]
       vals = [resolve_int_var(fn, x, cs_01) for x in ts]
-      expected = answer(vals[0], vals[1])
-      for x in vals[2:]:
-        expected = answer(expected, x)
-      expected = unistr(expected)
-      expected_truth = reduce(
-          lambda x, y: x or y, map(lambda z: z in cs_01, ts))
+
+      if group == 'boolean':
+        expected = ''
+      else:
+        expected = answer(vals[0], vals[1])
+        for x in vals[2:]:
+          expected = answer(expected, x)
+        expected = unistr(expected)
+
+      if group == 'boolean':
+        try:
+          expected_truth = reduce(answer, map(lambda x: x == '%TOTALDISCS%', t))
+        except TypeError:
+          # Assume False, this is probably $not.
+          expected_truth = False
+      else:
+        expected_truth = reduce(
+            lambda x, y: x or y, map(lambda z: z in cs_01, ts))
       generated_cases.append(pytest.param(
         fmt, expected, expected_truth, cs_01,
-        id="arithmetic:arity%s<%s = '%s'>" % (len(t), fmt, expected)))
+        id="%s:arity%s<%s = '%s'>" % (group, len(t), fmt, expected)))
   return generated_cases
 
 
-test_eval_cases += generate_arithmetic_tests()
+test_eval_cases += generate_tests()
 
 
 # Add min/max tests
