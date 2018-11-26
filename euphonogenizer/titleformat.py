@@ -42,14 +42,22 @@ def magic_map_track_artist(formatter, track):
     return artist
   return None
 
-def magic_map_tracknumber(formatter, track):
+def __find_tracknumber(track):
   value = track.get('TRACKNUMBER')
+  if (value is None or value is False) and 'TRACK' in track:
+    # This is undocumented behavior. Foobar will fall back to a freeform TRACK
+    # field if it's present and TRACKNUMBER is missing.
+    return track.get('TRACK')
+  return value
+
+def magic_map_tracknumber(formatter, track):
+  value = __find_tracknumber(track)
   if value is not None and value is not False:
     return value.zfill(2)
   return None
 
 def magic_map_track_number(formatter, track):
-  value = track.get('TRACKNUMBER')
+  value = __find_tracknumber(track)
   if value is not None and value is not False:
     return unistr(int(value))
   return None
@@ -64,6 +72,8 @@ magic_mappings = {
     'filename_ext': magic_map_filename_ext,
     'track artist': magic_map_track_artist,
     'title': ['TITLE', '@'],
+    # %track% is undocumented, even on HydrogenAudio when I wrote this.
+    'track': magic_map_tracknumber,
     'tracknumber': magic_map_tracknumber,
     'track number': magic_map_track_number,
     '_date_': ['DATE'],
