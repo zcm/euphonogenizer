@@ -290,15 +290,16 @@ def foo_minN(track, memory, va_aN):
   return reduce(__foo_min_logic, map(__foo_va_conv_n_lazy, va_aN))
 
 def foo_mod(track, memory, va_a_b):
-  a = __foo_va_conv_n_lazy_int(va_a_b[0])
-  b = __foo_va_conv_n_lazy_int(va_a_b[1])
-  if not b:
-    return a
-  return a % b
+  a = __foo_va_conv_n_lazy(va_a_b[0])
+  b = __foo_va_conv_n_lazy(va_a_b[1])
+  a %= b
+  return a
 
 def foo_modN(track, memory, va_aN):
-  return reduce(lambda x, y: foo_mod(track, memory, [x, y]),
-      map(__foo_va_conv_n_lazy_int, va_aN))
+  value = __foo_va_conv_n_lazy(va_aN[0])
+  for a in va_aN[1:]:
+    value %= __foo_va_conv_n_lazy(a)
+  return value
 
 def foo_mul(track, memory, va_aN):
   value = __foo_va_conv_n_lazy(va_aN[0])
@@ -1013,7 +1014,7 @@ foo_function_vtable = {
     'greater': {2: foo_greater, 'n': foo_false},
     'max': {0: foo_false, 1: foo_nnop, 2: foo_max, 'n': foo_maxN},
     'min': {0: foo_false, 1: foo_nnop, 2: foo_min, 'n': foo_minN},
-    'mod': {0: foo_false, 1: foo_nop, 2: foo_mod, 'n': foo_modN},
+    'mod': {0: foo_false, 1: foo_nnop, 2: foo_mod, 'n': foo_modN},
     'mul': {0: foo_one, 1: foo_nnop, 'n': foo_mul},
     # TODO: With strict rules, $muldiv 'n' should throw exception
     'muldiv': {3: foo_muldiv, 'n': foo_false},
@@ -1184,7 +1185,7 @@ class EvaluatorAtom:
   def __foo_div_logic(self, x, y):
     if y == 0:
       # Foobar skips division for zeros instead of exploding.
-      y = 1
+      return x
     # For some reason, Foobar rounds up when negative and down when positive.
     if x * y < 0:
       return x * -1 // y * -1
@@ -1197,6 +1198,24 @@ class EvaluatorAtom:
 
   def __ifloordiv__(self, other):
     self.string_value = self.__foo_div_logic(
+        self.string_value, other.string_value)
+    self.truth_value |= other.truth_value
+    return self
+
+  def __foo_mod_logic(self, x, y):
+    if x == 0:
+      return 0
+    if y == 0:
+      return x
+    return x % y
+
+  def __mod__(self, other):
+    return EvaluatorAtom(
+        self.__foo_mod_logic(self.string_value, other.string_value),
+        self.truth_value or other.truth_value)
+
+  def __imod__(self, other):
+    self.string_value = self.__foo_mod_logic(
         self.string_value, other.string_value)
     self.truth_value |= other.truth_value
     return self
