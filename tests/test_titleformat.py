@@ -63,14 +63,28 @@ window_title_integration_expected = (
 f = titleformat.TitleFormatter()
 fdbg = titleformat.TitleFormatter(debug=True)
 
+def _testcasegroup(idprefix, *testcases):
+  return [pytest.param(*x, id="%s<'%s' = '%s'>" % (idprefix, x[0], x[1]))
+          for x in testcases]
+
 test_eval_cases = [
     # Variable resolution tests
-    pytest.param(
-      '%artist% - ', 'Collective Soul - ', True, cs_01,
-      id='artist_variable_lookup'),
-    pytest.param(
-      '[%artist% - ]', 'Collective Soul - ', True, cs_01,
-      id='artist_variable_lookup_cond'),
+    *_testcasegroup('variable',
+      ('%artist% - ', 'Collective Soul - ', True, cs_01),
+      ('[%artist% - ]', 'Collective Soul - ', True, cs_01),
+      ('*[%missing% - ]*', '**', False, cs_01),
+    ),
+    # Bizarre variable resolution, yes this actually works in foobar
+    *_testcasegroup('variable:arithmetic_magic',
+      ('$add(1%track%,10)', '111', True, cs_01),
+      ('$sub(1%track%,10)', '91', True, cs_01),
+      ('$mul(1%track%,10)', '1010', True, cs_01),
+      ('$div(1%track%,10)', '10', True, cs_01),
+    ),
+    # Sanity tests, basic non-generated cases that validate generated ones
+    *_testcasegroup('sanity:arithmetic',
+      ('$add($div($mul($sub(100,1),2),10),2)', '21', False, {}),
+    ),
     # Arithmetic: $add()
     pytest.param(
         '$add(1,$add(1,$add(1,$add(1))))', '4', False, {},
@@ -356,6 +370,7 @@ boolean_resolutions = {
     'and': {'arity0': ('', True),  'var': '', 'answer': lambda x, y: x and y},
     'or':  {'arity0': ('', False), 'var': '', 'answer': lambda x, y: x or y},
     'not': {'arity0': ('', False), 'var': '', 'answer': lambda x: not x},
+    'xor': {'arity0': ('', False), 'var': '', 'answer': lambda x, y: x ^ y},
 }
 
 for key in arithmetic_resolutions:

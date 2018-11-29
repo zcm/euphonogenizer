@@ -211,6 +211,9 @@ def foo_nnop(track, memory, va):
 
   return '0'
 
+def foo_bnop(track, memory, va):
+  return __foo_va_conv_bool_lazy(va[0])
+
 def foo_if_arity2(track, memory, va_cond_then):
   if va_cond_then[0].eval():
     return va_cond_then[1].eval()
@@ -355,7 +358,10 @@ def foo_not(track, memory, va_x):
   return not __foo_va_conv_bool_lazy(va_x[0])
 
 def foo_xor(track, memory, va_N):
-  return reduce(lambda x, y: x ^ y, map(__foo_va_conv_bool_lazy, va_N))
+  r = False
+  for each in va_N:
+    r ^= __foo_va_conv_bool_lazy(each)
+  return r
 
 def foo_abbr(string_value):
   parts = re.sub('[()]', '', string_value).split()
@@ -1034,7 +1040,7 @@ foo_function_vtable = {
     'or': {0: foo_false, 'n': foo_or},
     # TODO: With strict rules, $not 'n' should throw exception
     'not': {0: foo_false, 1: foo_not, 'n': foo_false},
-    'xor': {0: foo_false, 1: foo_nop, 'n': foo_xor},
+    'xor': {0: foo_false, 1: foo_bnop, 'n': foo_xor},
     'abbr': {1: foo_abbr_arity1, 2: foo_abbr_arity2},
     'ansi': {1: foo_ansi},
     'ascii': {1: foo_ascii},
@@ -1137,10 +1143,16 @@ def vinvoke(track, function, argv, memory={}):
   return vmarshal(funcref(track, memory, argv))
 
 def vcallmarshal(atom):
-    if atom is None:
-      return ('', 0)
+  if atom is None:
+    return ('', 0)
 
-    return (unistr(atom), 1 if atom else 0)
+  return (unistr(atom), 1 if atom else 0)
+
+def vcondmarshal(atom):
+  if not atom:
+    return ('', 0)
+
+  return (unistr(atom), 1)
 
 def foobar_filename_escape(output):
   system = platform.system()
@@ -1628,7 +1640,7 @@ class TitleFormatter:
                   compiled_cond = self.eval(
                       None, current, True, depth + 1, offset + offset_start,
                       memory, True)
-                  compiled.append(lambda t, c=compiled_cond: vcallmarshal(c(t)))
+                  compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
                 else:
                   evaluated_value = self.eval(
                       track, current, True, depth + 1, offset + offset_start,
