@@ -136,198 +136,98 @@ test_eval_cases = [
     pytest.param(
         '$sub($sub($sub(1,$sub(5))),$sub(2,$sub(3,$sub(4))))', '-7', False, {},
         id='sub_arity2_nested_branching_positive_integers'),
-    # Arithmetic: $mul()
-    # Arithmetic: $div()
-    # Arithmetic: $muldiv()
     # NOTE: This function is weird. Any valid call is True, according to Foobar.
-    pytest.param('$muldiv()!a$muldiv()', '!a', False, {}, id='muldiv_arity0'),
-    pytest.param('$muldiv(123)', '', False, {}, id='muldiv_arity1'),
-    pytest.param('$muldiv(-456)', '', False, {}, id='muldiv_arity1_negative'),
-    pytest.param('$muldiv(-)', '', False, {}, id='muldiv_arity1_dash'),
-    pytest.param('$muldiv(0)', '', False, {}, id='muldiv_arity1_zero'),
-    pytest.param(
-        '$muldiv(-0)', '', False, {},
-        id='muldiv_arity1_negative_zero'),
-    pytest.param('$muldiv(1000, 10)', '', False, {}, id='muldiv_arity2'),
-    pytest.param('$muldiv(,)', '', False, {}, id='muldiv_arity2_blanks'),
-    pytest.param('$muldiv(-,)', '', False, {}, id='muldiv_arity2_dash_blank'),
-    pytest.param('$muldiv(,-)', '', False, {}, id='muldiv_arity2_blank_dash'),
-    pytest.param('$muldiv(-,-)', '', False, {}, id='muldiv_arity2_dashes'),
-    pytest.param(
-        '$muldiv(-1,-)', '', False, {},
-        id='muldiv_arity2_negative_then_dash'),
-    pytest.param('$muldiv(0, 123)', '', False, {}, id='muldiv_arity2_zero'),
-    pytest.param('$muldiv(1, 0)', '', False, {}, id='muldiv_arity2_by_zero'),
-    pytest.param(
-        '$muldiv(0, 0)', '', False, {},
-        id='muldiv_arity2_zero_by_zero'),
-    pytest.param(
-        '$muldiv(-10, 3)', '', False, {},
-        id='muldiv_arity2_negative_first'),
-    pytest.param(
-        '$muldiv(10, -3)', '', False, {},
-        id='muldiv_arity2_negative_second'),
-    pytest.param(
-        '$muldiv(-10, -3)', '', False, {},
-        id='muldiv_arity2_negative_both'),
-    pytest.param('$muldiv(128,2,2)', '128', True, {}, id='muldiv_arity3'),
-    pytest.param('$muldiv(,,)', '-1', True, {}, id='muldiv_arity3_blanks'),
-    pytest.param('$muldiv(-,-,-)', '-1', True, {}, id='muldiv_arity3_dashes'),
-    pytest.param(
-        '$muldiv(5,3,1)', '15', True, {},
-        id='muldiv_arity3_rounds_down_div_by_1'),
-    pytest.param(
-        '$muldiv(-5,3,1)', '-15', True, {},
-        id='muldiv_arity3_a_negative_div_by_1'),
-    pytest.param(
-        '$muldiv(5,-3,1)', '-15', True, {},
-        id='muldiv_arity3_b_negative_div_by_1'),
-    pytest.param(
-        '$muldiv(-5,-3,1)', '15', True, {},
-        id='muldiv_arity3_a_b_negative_div_by_1'),
-    pytest.param(
-        '$muldiv(5,3,2)', '7', True, {},
-        id='muldiv_arity3_rounds_down_div_by_2'),
-    pytest.param(
-        '$muldiv(-5,3,2)', '-7', True, {},
-        id='muldiv_arity3_a_negative_rounds_down_div_by_2'),
-    pytest.param(
-        '$muldiv(5,-3,2)', '-7', True, {},
-        id='muldiv_arity3_b_negative_rounds_down_div_by_2'),
-    pytest.param(
-        '$muldiv(-5,-3,2)', '7', True, {},
-        id='muldiv_arity3_a_b_negative_rounds_down_div_by_2'),
-    pytest.param(
-        '$muldiv(5,2,3)', '3', True, {},
-        id='muldiv_arity3_rounds_down_div_by_3'),
-    pytest.param(
-        '$muldiv(-5,2,3)', '-3', True, {},
-        id='muldiv_arity3_a_negative_rounds_down_div_by_3'),
-    pytest.param(
-        '$muldiv(5,-2,3)', '-3', True, {},
-        id='muldiv_arity3_b_negative_rounds_down_div_by_3'),
-    pytest.param(
-        '$muldiv(-5,-2,3)', '3', True, {},
-        id='muldiv_arity3_a_b_negative_rounds_down_div_by_3'),
-    pytest.param(
-        '$muldiv(5,7,8)', '4', True, {},
-        id='muldiv_arity3_rounds_down'),
-    pytest.param(
-        '$muldiv(-5,7,8)', '-4', True, {},
-        id='muldiv_arity3_a_negative_rounds_down'),
-    pytest.param(
-        '$muldiv(5,-7,8)', '-4', True, {},
-        id='muldiv_arity3_b_negative_rounds_down'),
-    pytest.param(
-        '$muldiv(-5,-7,8)', '4', True, {},
-        id='muldiv_arity3_a_b_negative_rounds_down'),
-    pytest.param(
-        '$muldiv(5,3,-1)', '-15', True, {},
-        id='muldiv_arity3_rounds_down_div_by_negative_1'),
-    pytest.param(
-        '$muldiv(-5,3,-1)', '15', True, {},
-        id='muldiv_arity3_a_negative_div_by_negative_1'),
-    pytest.param(
-        '$muldiv(5,-3,-1)', '15', True, {},
-        id='muldiv_arity3_b_negative_div_by_negative_1'),
-    pytest.param(
-        '$muldiv(-5,-3,-1)', '-15', True, {},
-        id='muldiv_arity3_a_b_negative_div_by_negative_1'),
-    pytest.param(
-        '$muldiv(5,3,-2)', '-7', True, {},
-        id='muldiv_arity3_rounds_down_div_by_negative_2'),
-    pytest.param(
-        '$muldiv(-5,3,-2)', '7', True, {},
-        id='muldiv_arity3_a_negative_rounds_down_div_by_negative_2'),
-    pytest.param(
-        '$muldiv(5,-3,-2)', '7', True, {},
-        id='muldiv_arity3_b_negative_rounds_down_div_by_negative_2'),
-    pytest.param(
-        '$muldiv(-5,-3,-2)', '-7', True, {},
-        id='muldiv_arity3_a_b_negative_rounds_down_div_by_negative_2'),
-    pytest.param(
-        '$muldiv(5,2,-3)', '-3', True, {},
-        id='muldiv_arity3_rounds_down_div_by_negative_3'),
-    pytest.param(
-        '$muldiv(-5,2,-3)', '3', True, {},
-        id='muldiv_arity3_a_negative_rounds_down_div_by_negative_3'),
-    pytest.param(
-        '$muldiv(5,-2,-3)', '3', True, {},
-        id='muldiv_arity3_b_negative_rounds_down_div_by_negative_3'),
-    pytest.param(
-        '$muldiv(-5,-2,-3)', '-3', True, {},
-        id='muldiv_arity3_a_b_negative_rounds_down_div_by_negative_3'),
-    pytest.param(
-        '$muldiv(5,7,-8)', '-4', True, {},
-        id='muldiv_arity3_rounds_down_c_negative'),
-    pytest.param(
-        '$muldiv(-5,7,-8)', '4', True, {},
-        id='muldiv_arity3_a_negative_rounds_down_c_negative'),
-    pytest.param(
-        '$muldiv(5,-7,-8)', '4', True, {},
-        id='muldiv_arity3_b_negative_rounds_down_c_negative'),
-    pytest.param(
-        '$muldiv(-5,-7,-8)', '-4', True, {},
-        id='muldiv_arity3_a_b_negative_rounds_down_c_negative'),
-    pytest.param(
-        '$muldiv(128,0,3)', '0', True, {},
-        id='muldiv_arity3_multiply_by_zero'),
-    pytest.param(
+    *_testcasegroup('arithmetic:muldiv',
+        ('$muldiv()!a$muldiv()', '!a', False, {}),
+        ('$muldiv(123)', '', False, {}),
+        ('$muldiv(-456)', '', False, {}),
+        ('$muldiv(-)', '', False, {}),
+        ('$muldiv(0)', '', False, {}),
+        ('$muldiv(-0)', '', False, {}),
+        ('$muldiv(1000, 10)', '', False, {}),
+        ('$muldiv(,)', '', False, {}),
+        ('$muldiv(-,)', '', False, {}),
+        ('$muldiv(,-)', '', False, {}),
+        ('$muldiv(-,-)', '', False, {}),
+        ('$muldiv(-1,-)', '', False, {}),
+        ('$muldiv(0, 123)', '', False, {}),
+        ('$muldiv(1, 0)', '', False, {}),
+        ('$muldiv(0, 0)', '', False, {}),
+        ('$muldiv(-10, 3)', '', False, {}),
+        ('$muldiv(10, -3)', '', False, {}),
+        ('$muldiv(-10, -3)', '', False, {}),
+        ('$muldiv(128,2,2)', '128', True, {}),
+        ('$muldiv(,,)', '-1', True, {}),
+        ('$muldiv(-,-,-)', '-1', True, {}),
+        ('$muldiv(5,3,1)', '15', True, {}),
+        ('$muldiv(-5,3,1)', '-15', True, {}),
+        ('$muldiv(5,-3,1)', '-15', True, {}),
+        ('$muldiv(-5,-3,1)', '15', True, {}),
+        # Test rounding down behavior
+        ('$muldiv(5,3,2)', '7', True, {}),
+        ('$muldiv(-5,3,2)', '-7', True, {}),
+        ('$muldiv(5,-3,2)', '-7', True, {}),
+        ('$muldiv(-5,-3,2)', '7', True, {}),
+        ('$muldiv(5,2,3)', '3', True, {}),
+        ('$muldiv(-5,2,3)', '-3', True, {}),
+        ('$muldiv(5,-2,3)', '-3', True, {}),
+        ('$muldiv(-5,-2,3)', '3', True, {}),
+        ('$muldiv(5,7,8)', '4', True, {}),
+        ('$muldiv(-5,7,8)', '-4', True, {}),
+        ('$muldiv(5,-7,8)', '-4', True, {}),
+        ('$muldiv(-5,-7,8)', '4', True, {}),
+        ('$muldiv(5,3,-1)', '-15', True, {}),
+        ('$muldiv(-5,3,-1)', '15', True, {}),
+        ('$muldiv(5,-3,-1)', '15', True, {}),
+        ('$muldiv(-5,-3,-1)', '-15', True, {}),
+        ('$muldiv(5,3,-2)', '-7', True, {}),
+        ('$muldiv(-5,3,-2)', '7', True, {}),
+        ('$muldiv(5,-3,-2)', '7', True, {}),
+        ('$muldiv(-5,-3,-2)', '-7', True, {}),
+        ('$muldiv(5,2,-3)', '-3', True, {}),
+        ('$muldiv(-5,2,-3)', '3', True, {}),
+        ('$muldiv(5,-2,-3)', '3', True, {}),
+        ('$muldiv(-5,-2,-3)', '-3', True, {}),
+        ('$muldiv(5,7,-8)', '-4', True, {}),
+        ('$muldiv(-5,7,-8)', '4', True, {}),
+        ('$muldiv(5,-7,-8)', '4', True, {}),
+        ('$muldiv(-5,-7,-8)', '-4', True, {}),
+        ('$muldiv(128,0,3)', '0', True, {}),
         # WTF. This is actual Foobar behavior. It's obviously a bug but... HOW?
-        '$muldiv(128,5,0)', '-1', True, {},
-        id='muldiv_arity3_divide_by_zero'),
-    pytest.param(
-        '$muldiv(6969,0,-0)', '-1', True, {},
-        id='muldiv_arity3_multiply_and_divide_by_zero'),
-    pytest.param('$muldiv(,,,)', '', False, {}, id='muldiv_arity4_blanks'),
-    pytest.param('$muldiv(1,1,1,1)', '', False, {}, id='muldiv_arity4_ones'),
-    pytest.param(
-        '$muldiv(%artist%,%artist%,%artist%)', '-1', True,
-        cs_01, id='muldiv_arity3_text_variable_lookup'),
-    pytest.param(
-        '$muldiv(%date%,%totaldiscs%,%totaltracks%)', '366', True,
-        cs_01, id='muldiv_arity3_numeric_variable_lookup'),
-    pytest.param(
-        '$muldiv(%no%,%nope%,%still no%)', '-1', True,
-        cs_01, id='muldiv_arity3_invalid_variable_lookup'),
+        ('$muldiv(128,5,0)', '-1', True, {}),
+        ('$muldiv(6969,0,-0)', '-1', True, {}),
+        ('$muldiv(,,,)', '', False, {}),
+        ('$muldiv(1,1,1,1)', '', False, {}),
+        ('$muldiv(%artist%,%artist%,%artist%)', '-1', True, cs_01),
+        ('$muldiv(%date%,%totaldiscs%,%totaltracks%)', '366', True, cs_01),
+        ('$muldiv(%no%,%nope%,%still no%)', '-1', True, cs_01),
+    ),
     # Arithmetic: $greater()
-    pytest.param('$greater()', '', False, {}, id='greater_arity0'),
-    pytest.param('$greater(0)', '', False, {}, id='greater_arity1_zero'),
-    pytest.param('$greater(-)', '', False, {}, id='greater_arity1_dash'),
-    pytest.param('$greater(,)', '', False, {}, id='greater_arity2_blanks'),
-    pytest.param('$greater(0,)', '', False, {}, id='greater_arity2_zero_blank'),
-    pytest.param('$greater(,0)', '', False, {}, id='greater_arity2_blank_zero'),
-    pytest.param('$greater(,-0)', '', False, {}, id='greater_arity2_neg_zero'),
-    pytest.param('$greater(1,)', '', True, {}, id='greater_arity2_one_blank'),
-    pytest.param('$greater(,1)', '', False, {}, id='greater_arity2_blank_one'),
-    pytest.param('$greater(2,1)', '', True, {}, id='greater_arity2'),
-    pytest.param('$greater(2,t)', '', True, {}, id='greater_arity2_text'),
-    pytest.param('$greater(,,)', '', False, {}, id='greater_arity3_blanks'),
-    pytest.param('$greater(2,,)', '', False, {}, id='greater_arity3_two_blank'),
-    pytest.param('$greater(2,1,)', '', False, {}, id='greater_arity3_blank'),
-    pytest.param('$greater(2,1,0)', '', False, {}, id='greater_arity3'),
-    pytest.param('$greater(,-1)', '', True, {}, id='greater_arity2_negative'),
-    pytest.param(
-        '$greater(-1,-2)', '', True, {},
-        id='greater_arity2_both_negative'),
-    pytest.param(
-        '$greater(%totaltracks%,-1)', '', True, cs_01,
-        id='greater_arity2_variable_resolution_first'),
-    pytest.param(
-        '$greater(-1,%totaltracks%)', '', False, cs_01,
-        id='greater_arity2_variable_resolution_second'),
-    pytest.param(
-        '$greater(%totaltracks%,%totaltracks%)', '', False, cs_01,
-        id='greater_arity2_variable_resolution_both'),
-    pytest.param(
-        '$greater($add(%totaltracks%,1),%totaltracks%)', '', True, cs_01,
-        id='greater_arity2_variable_resolution_both_add_first'),
-    pytest.param(
-        '$greater(%totaltracks%,$add(%totaltracks%,1))', '', False, cs_01,
-        id='greater_arity2_variable_resolution_both_add_second'),
-    pytest.param(
-        '$greater($add(1,%totaltracks%),$add(%totaltracks%,1))', '', False,
-        cs_01, id='greater_arity2_variable_resolution_both_add_both'),
+    *_testcasegroup('arithmetic:greater',
+        ('$greater()', '', False, {}),
+        ('$greater(0)', '', False, {}),
+        ('$greater(-)', '', False, {}),
+        ('$greater(,)', '', False, {}),
+        ('$greater(0,)', '', False, {}),
+        ('$greater(,0)', '', False, {}),
+        ('$greater(,-0)', '', False, {}),
+        ('$greater(1,)', '', True, {}),
+        ('$greater(,1)', '', False, {}),
+        ('$greater(2,1)', '', True, {}),
+        ('$greater(2,t)', '', True, {}),
+        ('$greater(,,)', '', False, {}),
+        ('$greater(2,,)', '', False, {}),
+        ('$greater(2,1,)', '', False, {}),
+        ('$greater(2,1,0)', '', False, {}),
+        ('$greater(,-1)', '', True, {}),
+        ('$greater(-1,-2)', '', True, {}),
+        ('$greater(%totaltracks%,-1)', '', True, cs_01),
+        ('$greater(-1,%totaltracks%)', '', False, cs_01),
+        ('$greater(%totaltracks%,%totaltracks%)', '', False, cs_01),
+        ('$greater($add(%totaltracks%,1),%totaltracks%)', '', True, cs_01),
+        ('$greater(%totaltracks%,$add(%totaltracks%,1))', '', False, cs_01),
+        ('$greater($add(1,%track%),$add(%track%,1))', '', False, cs_01),
+    ),
     # Arithmetic: $max() and $min -- the rest are autogenerated
     pytest.param('$max()', '', False, {}, id='max_arity0'),
     pytest.param('$min()', '', False, {}, id='min_arity0'),
@@ -579,7 +479,7 @@ def generate_tests():
             lambda x, y: x or y, map(lambda z: z in cs_01, ts))
       generated_cases.append(pytest.param(
         fmt, expected, expected_truth, cs_01,
-        id="%s:arity%s<%s = '%s'>" % (group, len(t), fmt, expected)))
+        id="%s:arity%s<'%s' = '%s'>" % (group, len(t), fmt, expected)))
   return generated_cases
 
 
@@ -626,7 +526,7 @@ for fn in ('min', 'max'):
 
     test_eval_cases.append(pytest.param(
       fmt, expected, expected_truth, cs_01,
-      id="arithmetic:arity%s(%s = '%s')" % (arity, fmt, expected)))
+      id="arithmetic:arity%s('%s' = '%s')" % (arity, fmt, expected)))
     # Now check for variable negation
     if len([e1 for e1 in filter((
         lambda x: len([e2 for e2 in filter((
@@ -636,7 +536,7 @@ for fn in ('min', 'max'):
       fmt = '$%s(%s)' % (fn, ','.join(negated))
       test_eval_cases.append(pytest.param(
         fmt, expected, expected_truth, cs_01,
-        id="arithmetic:arity%s(%s = '%s')" % (arity, fmt, expected)))
+        id="arithmetic:arity%s('%s' = '%s')" % (arity, fmt, expected)))
 
 
 class TestTitleFormatter:
