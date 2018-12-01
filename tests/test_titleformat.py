@@ -68,6 +68,28 @@ def _testcasegroup(idprefix, *testcases):
           for x in testcases]
 
 test_eval_cases = [
+    # Basic parsing tests -- test various interesting parser states
+    *_testcasegroup('parser',
+      ('', '', False, {}),
+      (' ', ' ', False, {}),
+      ('asdf1234', 'asdf1234', False, {}),
+      ("''", "'", False, {}),
+      ("''''", "''", False, {}),
+      ('%%', '%', False, {}),
+      ('%%%%', '%%', False, {}),
+      ('[]', '', False, {}),
+      ('[[]]', '', False, {}),
+      ("['']", '', False, {}),
+      ('[%]', '', False, {}),
+      ('[%%]', '', False, {}),
+      ("'['", '[', False, {}),
+      ("']'", ']', False, {}),
+      ("'[]'", '[]', False, {}),
+      ("'['']'", '[]', False, {}),
+      ('%[%', '?', False, {}),
+      ('[%[%]]', '', False, {}),
+      ('%]%', '?', False, {}),
+    ),
     # Variable resolution tests
     *_testcasegroup('variable',
       ('%artist% - ', 'Collective Soul - ', True, cs_01),
@@ -83,150 +105,127 @@ test_eval_cases = [
     ),
     # Sanity tests, basic non-generated cases that validate generated ones
     *_testcasegroup('sanity:arithmetic',
+      ("$add('1234')", '1234', False, {}),
+      ("$add(,,  '    1234    '  ,,)", '1234', False, {}),
       ('$add($div($mul($sub(100,1),2),10),2)', '21', False, {}),
     ),
-    # Arithmetic: $add()
-    pytest.param(
-        '$add(1,$add(1,$add(1,$add(1))))', '4', False, {},
-        id='add_arity2_nested_ones'),
-    pytest.param(
-        '$add(1,$add(2,$add(3,$add(4))))', '10', False, {},
-        id='add_arity2_nested_positive_integers'),
-    pytest.param(
-        '$add(-1,$add(-2,$add(-3,$add(-4))))', '-10', False, {},
-        id='add_arity2_nested_negative_integers'),
-    pytest.param(
-        # Foobar can't negate functions, so it will return the first value.
-        '$add(-1,-$add(-2,-$add(-3)))', '-1', False, {},
-        id='add_arity2_nested_negative_integers_negation'),
-    pytest.param(
-        # Same here, but it actually sums the first two.
-        '$add(-2,-6,-$add(-2,-$add(-3)))', '-8', False, {},
-        id='add_arity3_nested_negative_integers_negation1'),
-    pytest.param(
-        '$add(-3,-$add(-2,-$add(-3)),-4)', '-7', False, {},
-        id='add_arity3_nested_negative_integers_negation2'),
-    pytest.param(
-        '$add($add($add(1,$add(5))),$add(2,$add(3,$add(4))))', '15', False, {},
-        id='add_arity2_nested_branching_positive_integers'),
-    # Arithmetic: $sub()
-    pytest.param(
-        '$sub(1,$sub(1,$sub(1)))', '1', False, {},
-        id='sub_arity2_nested_ones3'),
-    pytest.param(
-        '$sub(1,$sub(1,$sub(1,$sub(1))))', '0', False, {},
-        id='sub_arity2_nested_ones4'),
-    pytest.param(
-        '$sub(1,$sub(2,$sub(3,$sub(4))))', '-2', False, {},
-        id='sub_arity2_nested_positive_integers'),
-    pytest.param(
-        '$sub(-1,$sub(-2,$sub(-3,$sub(-4))))', '2', False, {},
-        id='sub_arity2_nested_negative_integers'),
-    pytest.param(
-        # Foobar can't negate functions, so it will return the first value.
-        '$sub(-1,-$sub(-2,-$sub(-3)))', '-1', False, {},
-        id='sub_arity2_nested_negative_integers_negation'),
-    pytest.param(
-        # Same here, but it actually sums the first two.
-        '$sub(-2,-6,-$sub(-2,-$sub(-3)))', '4', False, {},
-        id='sub_arity3_nested_negative_integers_negation1'),
-    pytest.param(
-        '$sub(-3,-$sub(-2,-$sub(-3)),-4)', '1', False, {},
-        id='sub_arity3_nested_negative_integers_negation2'),
-    pytest.param(
-        '$sub($sub($sub(1,$sub(5))),$sub(2,$sub(3,$sub(4))))', '-7', False, {},
-        id='sub_arity2_nested_branching_positive_integers'),
+    # Nested arithmetic: $add() and $sub() -- other arithmetic tests generated
+    *_testcasegroup('arithmetic:nested',
+      ('$add(1,$add(1,$add(1,$add(1))))', '4', False, {}),
+      ('$add(1,$add(2,$add(3,$add(4))))', '10', False, {}),
+      ('$add(-1,$add(-2,$add(-3,$add(-4))))', '-10', False, {}),
+      # Foobar will negate a value returned to it by a function, but only if
+      # it's positive. If it's negative, it will be treated as text (--).
+      ("$add(-$add('1','2'),' 10')", '7', False, {}),
+      # Foobar can't negate functions that return negative values.
+      ('$add(-1,-$add(-2,-$add(-3)))', '-1', False, {}),
+      # Same here, but it actually sums the first two.
+      ('$add(-2,-6,-$add(-2,-$add(-3)))', '-8', False, {}),
+      ('$add(-3,-$add(-2,-$add(-3)),-4)', '-7', False, {}),
+      ('$add($add($add(1,$add(5))),$add(2,$add(3,4)))', '15', False, {}),
+      ('$sub(1,$sub(1,$sub(1)))', '1', False, {}),
+      ('$sub(1,$sub(1,$sub(1,$sub(1))))', '0', False, {}),
+      ('$sub(1,$sub(2,$sub(3,$sub(4))))', '-2', False, {}),
+      ('$sub(-1,$sub(-2,$sub(-3,$sub(-4))))', '2', False, {}),
+      ("$sub(-$sub('2','1'),'10')",'-11', False, {}),
+      # Foobar still can't negate functions that return negative values.
+      ('$sub(-1,-$sub(-2,-$sub(-3)))', '-1', False, {}),
+      # Same here, but it actually subtracts for the first two.
+      ('$sub(-2,-6,-$sub(-2,-$sub(-3)))', '4', False, {}),
+      ('$sub(-3,-$sub(-2,-$sub(-3)),-4)', '1', False, {}),
+      ('$sub($sub($sub(1,$sub(5))),$sub(2,$sub(3,4)))', '-7', False, {}),
+    ),
     # NOTE: This function is weird. Any valid call is True, according to Foobar.
     *_testcasegroup('arithmetic:muldiv',
-        ('$muldiv()!a$muldiv()', '!a', False, {}),
-        ('$muldiv(123)', '', False, {}),
-        ('$muldiv(-456)', '', False, {}),
-        ('$muldiv(-)', '', False, {}),
-        ('$muldiv(0)', '', False, {}),
-        ('$muldiv(-0)', '', False, {}),
-        ('$muldiv(1000, 10)', '', False, {}),
-        ('$muldiv(,)', '', False, {}),
-        ('$muldiv(-,)', '', False, {}),
-        ('$muldiv(,-)', '', False, {}),
-        ('$muldiv(-,-)', '', False, {}),
-        ('$muldiv(-1,-)', '', False, {}),
-        ('$muldiv(0, 123)', '', False, {}),
-        ('$muldiv(1, 0)', '', False, {}),
-        ('$muldiv(0, 0)', '', False, {}),
-        ('$muldiv(-10, 3)', '', False, {}),
-        ('$muldiv(10, -3)', '', False, {}),
-        ('$muldiv(-10, -3)', '', False, {}),
-        ('$muldiv(128,2,2)', '128', True, {}),
-        ('$muldiv(,,)', '-1', True, {}),
-        ('$muldiv(-,-,-)', '-1', True, {}),
-        ('$muldiv(5,3,1)', '15', True, {}),
-        ('$muldiv(-5,3,1)', '-15', True, {}),
-        ('$muldiv(5,-3,1)', '-15', True, {}),
-        ('$muldiv(-5,-3,1)', '15', True, {}),
-        # Test rounding down behavior
-        ('$muldiv(5,3,2)', '7', True, {}),
-        ('$muldiv(-5,3,2)', '-7', True, {}),
-        ('$muldiv(5,-3,2)', '-7', True, {}),
-        ('$muldiv(-5,-3,2)', '7', True, {}),
-        ('$muldiv(5,2,3)', '3', True, {}),
-        ('$muldiv(-5,2,3)', '-3', True, {}),
-        ('$muldiv(5,-2,3)', '-3', True, {}),
-        ('$muldiv(-5,-2,3)', '3', True, {}),
-        ('$muldiv(5,7,8)', '4', True, {}),
-        ('$muldiv(-5,7,8)', '-4', True, {}),
-        ('$muldiv(5,-7,8)', '-4', True, {}),
-        ('$muldiv(-5,-7,8)', '4', True, {}),
-        ('$muldiv(5,3,-1)', '-15', True, {}),
-        ('$muldiv(-5,3,-1)', '15', True, {}),
-        ('$muldiv(5,-3,-1)', '15', True, {}),
-        ('$muldiv(-5,-3,-1)', '-15', True, {}),
-        ('$muldiv(5,3,-2)', '-7', True, {}),
-        ('$muldiv(-5,3,-2)', '7', True, {}),
-        ('$muldiv(5,-3,-2)', '7', True, {}),
-        ('$muldiv(-5,-3,-2)', '-7', True, {}),
-        ('$muldiv(5,2,-3)', '-3', True, {}),
-        ('$muldiv(-5,2,-3)', '3', True, {}),
-        ('$muldiv(5,-2,-3)', '3', True, {}),
-        ('$muldiv(-5,-2,-3)', '-3', True, {}),
-        ('$muldiv(5,7,-8)', '-4', True, {}),
-        ('$muldiv(-5,7,-8)', '4', True, {}),
-        ('$muldiv(5,-7,-8)', '4', True, {}),
-        ('$muldiv(-5,-7,-8)', '-4', True, {}),
-        ('$muldiv(128,0,3)', '0', True, {}),
-        # WTF. This is actual Foobar behavior. It's obviously a bug but... HOW?
-        ('$muldiv(128,5,0)', '-1', True, {}),
-        ('$muldiv(6969,0,-0)', '-1', True, {}),
-        ('$muldiv(,,,)', '', False, {}),
-        ('$muldiv(1,1,1,1)', '', False, {}),
-        ('$muldiv(%artist%,%artist%,%artist%)', '-1', True, cs_01),
-        ('$muldiv(%date%,%totaldiscs%,%totaltracks%)', '366', True, cs_01),
-        ('$muldiv(%no%,%nope%,%still no%)', '-1', True, cs_01),
+      ('$muldiv()!a$muldiv()', '!a', False, {}),
+      ('$muldiv(123)', '', False, {}),
+      ('$muldiv(-456)', '', False, {}),
+      ('$muldiv(-)', '', False, {}),
+      ('$muldiv(0)', '', False, {}),
+      ('$muldiv(-0)', '', False, {}),
+      ('$muldiv(1000, 10)', '', False, {}),
+      ('$muldiv(,)', '', False, {}),
+      ('$muldiv(-,)', '', False, {}),
+      ('$muldiv(,-)', '', False, {}),
+      ('$muldiv(-,-)', '', False, {}),
+      ('$muldiv(-1,-)', '', False, {}),
+      ('$muldiv(0, 123)', '', False, {}),
+      ('$muldiv(1, 0)', '', False, {}),
+      ('$muldiv(0, 0)', '', False, {}),
+      ('$muldiv(-10, 3)', '', False, {}),
+      ('$muldiv(10, -3)', '', False, {}),
+      ('$muldiv(-10, -3)', '', False, {}),
+      ('$muldiv(128,2,2)', '128', True, {}),
+      ('$muldiv(,,)', '-1', True, {}),
+      ('$muldiv(-,-,-)', '-1', True, {}),
+      ('$muldiv(5,3,1)', '15', True, {}),
+      ('$muldiv(-5,3,1)', '-15', True, {}),
+      ('$muldiv(5,-3,1)', '-15', True, {}),
+      ('$muldiv(-5,-3,1)', '15', True, {}),
+      # Test rounding down behavior
+      ('$muldiv(5,3,2)', '7', True, {}),
+      ('$muldiv(-5,3,2)', '-7', True, {}),
+      ('$muldiv(5,-3,2)', '-7', True, {}),
+      ('$muldiv(-5,-3,2)', '7', True, {}),
+      ('$muldiv(5,2,3)', '3', True, {}),
+      ('$muldiv(-5,2,3)', '-3', True, {}),
+      ('$muldiv(5,-2,3)', '-3', True, {}),
+      ('$muldiv(-5,-2,3)', '3', True, {}),
+      ('$muldiv(5,7,8)', '4', True, {}),
+      ('$muldiv(-5,7,8)', '-4', True, {}),
+      ('$muldiv(5,-7,8)', '-4', True, {}),
+      ('$muldiv(-5,-7,8)', '4', True, {}),
+      ('$muldiv(5,3,-1)', '-15', True, {}),
+      ('$muldiv(-5,3,-1)', '15', True, {}),
+      ('$muldiv(5,-3,-1)', '15', True, {}),
+      ('$muldiv(-5,-3,-1)', '-15', True, {}),
+      ('$muldiv(5,3,-2)', '-7', True, {}),
+      ('$muldiv(-5,3,-2)', '7', True, {}),
+      ('$muldiv(5,-3,-2)', '7', True, {}),
+      ('$muldiv(-5,-3,-2)', '-7', True, {}),
+      ('$muldiv(5,2,-3)', '-3', True, {}),
+      ('$muldiv(-5,2,-3)', '3', True, {}),
+      ('$muldiv(5,-2,-3)', '3', True, {}),
+      ('$muldiv(-5,-2,-3)', '-3', True, {}),
+      ('$muldiv(5,7,-8)', '-4', True, {}),
+      ('$muldiv(-5,7,-8)', '4', True, {}),
+      ('$muldiv(5,-7,-8)', '4', True, {}),
+      ('$muldiv(-5,-7,-8)', '-4', True, {}),
+      ('$muldiv(128,0,3)', '0', True, {}),
+      # WTF. This is actual Foobar behavior. It's obviously a bug but... HOW?
+      ('$muldiv(128,5,0)', '-1', True, {}),
+      ('$muldiv(6969,0,-0)', '-1', True, {}),
+      ('$muldiv(,,,)', '', False, {}),
+      ('$muldiv(1,1,1,1)', '', False, {}),
+      ('$muldiv(%artist%,%artist%,%artist%)', '-1', True, cs_01),
+      ('$muldiv(%date%,%totaldiscs%,%totaltracks%)', '366', True, cs_01),
+      ('$muldiv(%no%,%nope%,%still no%)', '-1', True, cs_01),
     ),
     # Arithmetic: $greater()
     *_testcasegroup('arithmetic:greater',
-        ('$greater()', '', False, {}),
-        ('$greater(0)', '', False, {}),
-        ('$greater(-)', '', False, {}),
-        ('$greater(,)', '', False, {}),
-        ('$greater(0,)', '', False, {}),
-        ('$greater(,0)', '', False, {}),
-        ('$greater(,-0)', '', False, {}),
-        ('$greater(1,)', '', True, {}),
-        ('$greater(,1)', '', False, {}),
-        ('$greater(2,1)', '', True, {}),
-        ('$greater(2,t)', '', True, {}),
-        ('$greater(,,)', '', False, {}),
-        ('$greater(2,,)', '', False, {}),
-        ('$greater(2,1,)', '', False, {}),
-        ('$greater(2,1,0)', '', False, {}),
-        ('$greater(,-1)', '', True, {}),
-        ('$greater(-1,-2)', '', True, {}),
-        ('$greater(%totaltracks%,-1)', '', True, cs_01),
-        ('$greater(-1,%totaltracks%)', '', False, cs_01),
-        ('$greater(%totaltracks%,%totaltracks%)', '', False, cs_01),
-        ('$greater($add(%totaltracks%,1),%totaltracks%)', '', True, cs_01),
-        ('$greater(%totaltracks%,$add(%totaltracks%,1))', '', False, cs_01),
-        ('$greater($add(1,%track%),$add(%track%,1))', '', False, cs_01),
+      ('$greater()', '', False, {}),
+      ('$greater(0)', '', False, {}),
+      ('$greater(-)', '', False, {}),
+      ('$greater(,)', '', False, {}),
+      ('$greater(0,)', '', False, {}),
+      ('$greater(,0)', '', False, {}),
+      ('$greater(,-0)', '', False, {}),
+      ('$greater(1,)', '', True, {}),
+      ('$greater(,1)', '', False, {}),
+      ('$greater(2,1)', '', True, {}),
+      ('$greater(2,t)', '', True, {}),
+      ('$greater(,,)', '', False, {}),
+      ('$greater(2,,)', '', False, {}),
+      ('$greater(2,1,)', '', False, {}),
+      ('$greater(2,1,0)', '', False, {}),
+      ('$greater(,-1)', '', True, {}),
+      ('$greater(-1,-2)', '', True, {}),
+      ('$greater(%totaltracks%,-1)', '', True, cs_01),
+      ('$greater(-1,%totaltracks%)', '', False, cs_01),
+      ('$greater(%totaltracks%,%totaltracks%)', '', False, cs_01),
+      ('$greater($add(%totaltracks%,1),%totaltracks%)', '', True, cs_01),
+      ('$greater(%totaltracks%,$add(%totaltracks%,1))', '', False, cs_01),
+      ('$greater($add(1,%track%),$add(%track%,1))', '', False, cs_01),
     ),
     # Arithmetic: $max() and $min -- the rest are autogenerated
     pytest.param('$max()', '', False, {}, id='max_arity0'),
@@ -259,18 +258,18 @@ def mod_logic(x, y):
 
 
 arithmetic_resolutions = {
-    'add': {'arity0': ('0', False), 'var': 0, 'answer': lambda x, y: x + y},
-    'sub': {'arity0': ('', False) , 'var': 0, 'answer': lambda x, y: x - y},
-    'mul': {'arity0': ('1', False), 'var': 0, 'answer': lambda x, y: x * y},
-    'div': {'arity0': ('', False) , 'var': 0, 'answer': div_logic},
-    'mod': {'arity0': ('', False) , 'var': 0, 'answer': mod_logic},
+    'add': {'arity0': ('0', False), 'answer': lambda x, y: x + y},
+    'sub': {'arity0': ('', False) , 'answer': lambda x, y: x - y},
+    'mul': {'arity0': ('1', False), 'answer': lambda x, y: x * y},
+    'div': {'arity0': ('', False) , 'answer': div_logic},
+    'mod': {'arity0': ('', False) , 'answer': mod_logic},
 }
 
 boolean_resolutions = {
-    'and': {'arity0': ('', True),  'var': '', 'answer': lambda x, y: x and y},
-    'or':  {'arity0': ('', False), 'var': '', 'answer': lambda x, y: x or y},
-    'not': {'arity0': ('', False), 'var': '', 'answer': lambda x: not x},
-    'xor': {'arity0': ('', False), 'var': '', 'answer': lambda x, y: x ^ y},
+    'and': {'arity0': ('', True),   'answer': lambda x, y: x and y},
+    'or':  {'arity0': ('', False),  'answer': lambda x, y: x or y},
+    'not': {'arity0': ('', False),  'answer': lambda x: not x},
+    'xor': {'arity0': ('', False),  'answer': lambda x, y: x ^ y},
 }
 
 for key in arithmetic_resolutions:
@@ -284,13 +283,14 @@ expected_resolutions.update(boolean_resolutions)
 
 
 def resolve_int_var(fn, v, track):
+  print("[TEST] Attempting to resolve variable '%s' for fn '%s'" % (v, fn))
   try:
     return int(v)
   except ValueError:
     pass
 
   try:
-    r = int(track[v]) if v in track else expected_resolutions[fn]['var']
+    r = int(track[v]) if v in track else 0
   except ValueError:
     return track[v]
   return r
@@ -373,6 +373,27 @@ def generate_tests():
         ('%TOTALDISCS%', '%MISSING%'),
         ('%MISSING%', '%MISSING%'),
     ):
+      # First check the literal parser and how it handles numbers
+      if fn != 'not': # Skip this check for not
+        if type(t1) is int or type(t1) is not int and '%' not in t1:
+          s1 = unistr(t1)
+          literal_s1 = "'" + s1 + "'"
+          a1 = t1 if type(t1) is int else resolve_int_var(fn, t1, cs_01)
+          a2 = t2 if type(t2) is int else resolve_int_var(
+              fn, t2.strip('%'), cs_01)
+          fmt = '$%s(%s,%s)' % (fn, literal_s1, t2)
+          expected = '' if group == 'boolean' else unistr(answer(a1, a2))
+          expected_truth = False if fn == 'and' else '%' in unistr(t2)
+          generated_cases.append(pytest.param(
+            fmt, expected, expected_truth, cs_01,
+            id="%s:arity2literal<'%s' = '%s'>" % (group, fmt, expected)))
+          if len(s1) > 1:
+            literal_s1 = "'" + s1[0] + "'" + s1[1:]
+            fmt = '$%s(%s,%s)' % (fn, literal_s1, t2)
+            generated_cases.append(pytest.param(
+              fmt, expected, False, cs_01,
+              id="%s:arity2literal<'%s' = '%s'>" % (group, fmt, expected)))
+
       for g1, g2, g3, g4 in (  # Also generate some garbage text to test with
           ('', '', '', ''),  # The default, no garbage
           ('', '--', '', '--'),
