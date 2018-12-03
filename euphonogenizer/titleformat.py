@@ -183,6 +183,9 @@ def foo_one(track, memory, va):
 def foo_nop(track, memory, va):
   return va[0].eval()
 
+def foo_unknown(track, memory, va):
+  return '[UNKNOWN FUNCTION]'
+
 nnop_known_table = {
     '' : '0',
     '-' : '0',
@@ -222,6 +225,9 @@ def foo_if_arity3(track, memory, va_cond_then_else):
   if va_cond_then_else[0].eval():
     return va_cond_then_else[1].eval()
   return va_cond_then_else[2].eval()
+
+def foo_if_invalid(track, memory, va):
+  return '[INVALID $IF SYNTAX]'
 
 def foo_if2(track, memory, va_a_else):
   return va_a_else[0].eval() if va_a_else[0].eval() else va_a_else[1].eval()
@@ -1017,7 +1023,9 @@ def foo_puts(track, memory, va_name_value):
 
 
 foo_function_vtable = {
-    'if': {2: foo_if_arity2, 3: foo_if_arity3},
+    '(default)' : {'n': foo_unknown},
+    # TODO: With strict rules, $if 'n' should throw exception
+    'if': {2: foo_if_arity2, 3: foo_if_arity3, 'n': foo_if_invalid},
     'if2': {2: foo_if2},
     'if3': {0: foo_false, 1: foo_nop, 'n': foo_if3},
     'ifequal': {4: foo_ifequal},
@@ -1128,14 +1136,32 @@ def vmarshal(value):
 
 def vlookup(function, arity):
   try:
-    return foo_function_vtable[function][arity]
+    fn_vector = foo_function_vtable[function]
+    try:
+      return fn_vector[arity]
+    except KeyError:
+      try:
+        return fn_vector['n']
+      except KeyError:
+        raise FunctionVirtualInvocationException(
+            'The function with name "%s" has no definition for arity %s' % (
+              function, arity))
   except KeyError:
     try:
-      return foo_function_vtable[function]['n']
+      fn_vector = foo_function_vtable['(default)']
+      try:
+        return fn_vector[arity]
+      except KeyError:
+        try:
+          return fn_vector['n']
+        except KeyError:
+          raise FunctionVirtualInvocationException(
+              'Function "' + function + '" is undefined and the default'
+              + ' handler has no definition for arity ' + arity)
     except KeyError:
-      message = 'No function with name %s and arity %s exists' % (
-          function, arity)
-      raise FunctionVirtualInvocationException(message)
+      raise FunctionVirtualInvocationException(
+          'The function with name "' + function + '" has no definition and no'
+          + ' default handler has been defined')
 
 def vinvoke(track, function, argv, memory={}):
   arity = len(argv)
@@ -1391,10 +1417,12 @@ class TitleFormatParseException(Exception):
 
 class TitleFormatter:
   def __init__(
-      self, case_sensitive=False, magic=True, for_filename=False, debug=False):
+      self, case_sensitive=False, magic=True, for_filename=False,
+      compatible=True, debug=False):
     self.case_sensitive = case_sensitive
     self.magic = magic
     self.for_filename = for_filename
+    self.compatible = compatible
     self.debug = debug
 
   def format(self, track, title_format):
@@ -1414,11 +1442,13 @@ class TitleFormatter:
     parsing_function_args = False
     parsing_function_recursive = False
     parsing_conditional = False
+    paren_poisoned = False
     offset_start = 0
     fn_offset_start = 0
     bad_var_char = None
     conditional_parse_count = 0
     evaluation_count = 0
+    argparen_count = 0
     recursive_lparen_count = 0
     recursive_rparen_count = 0
     output = ''
@@ -1473,7 +1503,16 @@ class TitleFormatter:
             offset_start = i + 1
           elif c == ']':
             message = self.make_backwards_error(']', '[', offset, i)
-            raise TitleFormatParseException(message)
+            if self.compatible:
+              if self.debug:
+                dbg(self.make_noncompatible_dbg_msg(message), depth)
+            else:
+              raise TitleFormatParseException(message)
+          elif (c == '(' or c == ')') and self.compatible:
+            # This seems like a foobar bug; parens shouldn't do anything outside
+            # of a function call, but foobar will just explode if it sees a lone
+            # paren floating around in the input.
+            break
           else:
             output += c
         if compiling and not outputting and len(output) > 0:
@@ -1514,11 +1553,8 @@ class TitleFormatter:
             raise TitleFormatParseException(
                 'Invalid parse state: Cannot parse names while in literal mode')
           if c == '(':
-            if current == '':
-              raise TitleFormatParseException(
-                  "Can't call function with no name at char %s" % i)
             if self.debug:
-              dbg('parsed function %s at char %s' % (current, i), depth)
+              dbg('parsed function "%s" at char %s' % (current, i), depth)
 
             current_fn = current
             current = ''
@@ -1528,7 +1564,15 @@ class TitleFormatter:
           elif c == ')':
             message = self.make_backwards_error(')', '(', offset, i)
             raise TitleFormatParseException(message)
+          elif c == '$' and lookbehind == '$':
+            if self.debug:
+              dbg('output of single $ due to lookbehind at char %s' % i, depth)
+            output += c
+            outputting = True
+            parsing_function = False
           elif not (c == '_' or c.isalnum()):
+            if self.compatible:
+              break
             raise TitleFormatParseException(
                 "Illegal token '%s' encountered at char %s" % (c, i))
           else:
@@ -1541,7 +1585,32 @@ class TitleFormatter:
               current += next_current
               literal_count += chars_parsed
             else:
-              if c == ')':
+              if paren_poisoned:
+                if self.debug:
+                  dbg('checking poison state at char %s' % i, depth)
+                if c == '(':
+                  argparen_count += 1
+                  if self.debug:
+                    dbg('paren poisoning count now %s at char %s' % (
+                      argparen_count, i), depth)
+                  continue
+                if argparen_count == 0:
+                  if c == ',' or c == ')':
+                    if self.debug:
+                      dbg('stopped paren poisoning at char %s' % i, depth)
+                    # Resume normal execution and fall through; don't continue.
+                    paren_poisoned = False
+                  else:
+                    continue
+                elif c == ')':
+                  argparen_count -= 1
+                  if self.debug:
+                    dbg('paren poisoning count now %s at char %s' % (
+                      argparen_count, i), depth)
+                  continue
+                else:
+                  continue
+              if c == ')' and argparen_count == 0:
                 if current != '' or len(current_argv) > 0:
                   current, arg = self.parse_fn_arg(track, current_fn, current,
                       current_argv, c, i, depth, offset + offset_start, memory,
@@ -1570,6 +1639,18 @@ class TitleFormatter:
                 current_argv = []
                 outputting = True
                 parsing_function_args = False
+              elif c == ')':
+                argparen_count -= 1
+                current += c
+              elif c == '(':
+                argparen_count += 1
+                if self.compatible:
+                  if self.debug:
+                    dbg('detected paren poisoning at char %s' % i, depth)
+                  paren_poisoned = True
+                  continue
+                else:
+                  current += c
               elif c == "'":
                 if self.debug:
                   dbg('entering arglist literal mode at char %s' % i, depth)
@@ -1577,7 +1658,7 @@ class TitleFormatter:
                 literal_count = 0
                 # Include the quotes because we reparse function arguments.
                 current += c
-              elif c == ',':
+              elif c == ',' and argparen_count == 0:
                 current, arg = self.parse_fn_arg(track, current_fn, current,
                     current_argv, c, i, depth, offset + offset_start, memory,
                     compiling)
@@ -1672,12 +1753,11 @@ class TitleFormatter:
       lookbehind = c
 
     # At this point, we have reached the end of the input.
+    message = None
     if outputting:
       if literal:
         message = self.make_unterminated_error('literal', "'", offset, i)
-        raise TitleFormatParseException(message)
     else:
-      message = None
       if parsing_variable:
         message = self.make_unterminated_error('variable', '%', offset, i)
         if bad_var_char is not None:
@@ -1691,8 +1771,14 @@ class TitleFormatter:
         message = self.make_unterminated_error('conditional', ']', offset, i)
       else:
         message = "Invalid title format parse state: Unknown error"
+        raise TitleFormatParseException(message)  # Always raise this
 
-      raise TitleFormatParseException(message)
+    if message is not None:
+      if self.compatible:
+        if self.debug:
+          dbg(self.make_noncompatible_dbg_msg(message), depth)
+      else:
+        raise TitleFormatParseException(message)
 
     if compiling:
       if len(output) > 0:
@@ -1732,6 +1818,10 @@ class TitleFormatter:
 
   def is_valid_var_identifier(self, c):
     return c == ' ' or c == '@' or c == '_' or c == '-' or c.isalnum()
+
+  def make_noncompatible_dbg_msg(self, message):
+    return ('A non-compatible formatter would have raised an exception with'
+        + ' the message "' + message + '"')
 
   def make_backwards_error(self, right, left_expected, offset, i):
     message = "Encountered '%s' with no matching '%s'" % (right, left_expected)
