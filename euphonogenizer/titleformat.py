@@ -1028,7 +1028,7 @@ foo_function_vtable = {
     'if': {2: foo_if_arity2, 3: foo_if_arity3, 'n': foo_invalid('if')},
     'if2': {2: foo_if2, 'n': foo_invalid('if2')},
     'if3': {0: foo_false, 1: foo_false, 'n': foo_if3},
-    'ifequal': {4: foo_ifequal},
+    'ifequal': {4: foo_ifequal, 'n': foo_invalid('ifequal')},
     'ifgreater': {4: foo_ifgreater},
     'iflonger': {4: foo_iflonger},
     'select': {0: foo_false, 1: foo_false, 'n': foo_select},
