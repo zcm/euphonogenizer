@@ -217,6 +217,9 @@ def foo_nnop(track, memory, va):
 def foo_bnop(track, memory, va):
   return __foo_va_conv_bool_lazy(va[0])
 
+def foo_invalid(fn):
+  return lambda *args, x='[INVALID $%s SYNTAX]' % fn.upper(): x
+
 def foo_if_arity2(track, memory, va_cond_then):
   if va_cond_then[0].eval():
     return va_cond_then[1].eval()
@@ -225,9 +228,6 @@ def foo_if_arity3(track, memory, va_cond_then_else):
   if va_cond_then_else[0].eval():
     return va_cond_then_else[1].eval()
   return va_cond_then_else[2].eval()
-
-def foo_if_invalid(track, memory, va):
-  return '[INVALID $IF SYNTAX]'
 
 def foo_if2(track, memory, va_a_else):
   return va_a_else[0].eval() if va_a_else[0].eval() else va_a_else[1].eval()
@@ -1025,8 +1025,8 @@ def foo_puts(track, memory, va_name_value):
 foo_function_vtable = {
     '(default)' : {'n': foo_unknown},
     # TODO: With strict rules, $if 'n' should throw exception
-    'if': {2: foo_if_arity2, 3: foo_if_arity3, 'n': foo_if_invalid},
-    'if2': {2: foo_if2},
+    'if': {2: foo_if_arity2, 3: foo_if_arity3, 'n': foo_invalid('if')},
+    'if2': {2: foo_if2, 'n': foo_invalid('if2')},
     'if3': {0: foo_false, 1: foo_nop, 'n': foo_if3},
     'ifequal': {4: foo_ifequal},
     'ifgreater': {4: foo_ifgreater},
