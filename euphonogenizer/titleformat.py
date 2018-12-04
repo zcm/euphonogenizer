@@ -1027,7 +1027,7 @@ foo_function_vtable = {
     # TODO: With strict rules, $if 'n' should throw exception
     'if': {2: foo_if_arity2, 3: foo_if_arity3, 'n': foo_invalid('if')},
     'if2': {2: foo_if2, 'n': foo_invalid('if2')},
-    'if3': {0: foo_false, 1: foo_nop, 'n': foo_if3},
+    'if3': {0: foo_false, 1: foo_false, 'n': foo_if3},
     'ifequal': {4: foo_ifequal},
     'ifgreater': {4: foo_ifgreater},
     'iflonger': {4: foo_iflonger},
