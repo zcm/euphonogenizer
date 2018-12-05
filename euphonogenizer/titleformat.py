@@ -256,7 +256,7 @@ def foo_iflonger(track, memory, va_s_n_then_else):
   n = __foo_va_conv_n_lazy_int(va_s_n_then_else[1])
   if len(va_s_n_then_else[0].eval()) > n:
     return va_s_n_then_else[2].eval()
-  return va_n1_n2_then_else[3].eval()
+  return va_s_n_then_else[3].eval()
 
 def foo_select(track, memory, va_n_a1_aN):
   n = __foo_va_conv_n_lazy_int(va_n_a1_aN[0])
@@ -1030,7 +1030,7 @@ foo_function_vtable = {
     'if3': {0: foo_false, 1: foo_false, 'n': foo_if3},
     'ifequal': {4: foo_ifequal, 'n': foo_invalid('ifequal')},
     'ifgreater': {4: foo_ifgreater, 'n': foo_invalid('ifgreater')},
-    'iflonger': {4: foo_iflonger},
+    'iflonger': {4: foo_iflonger, 'n': foo_invalid('iflonger')},
     'select': {0: foo_false, 1: foo_false, 'n': foo_select},
     'add': {0: foo_zero, 1: foo_nnop, 'n': foo_add},
     'div': {0: foo_false, 1: foo_nnop, 'n': foo_div},
@@ -1313,6 +1313,9 @@ class EvaluatorAtom:
 
   def __bool__(self):
     return self.truth_value
+
+  def __len__(self):
+    return len(str(self.string_value))
 
   def __repr__(self):
     return 'atom(%s, %s)' % (repr(self.string_value), self.truth_value)

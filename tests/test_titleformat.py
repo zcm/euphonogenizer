@@ -6,6 +6,7 @@ from euphonogenizer import titleformat
 from euphonogenizer.common import unistr
 
 from functools import reduce
+from itertools import product
 
 import sys
 import pytest
@@ -63,9 +64,41 @@ window_title_integration_expected = (
 f = titleformat.TitleFormatter()
 fdbg = titleformat.TitleFormatter(debug=True)
 
+def _tcid(prefix, testcase):
+  suffix = '' if len(testcase) <= 4 or not testcase[4] else ':' + testcase[4]
+  return "%s%s<'%s' = '%s'>" % (prefix, suffix, testcase[0], testcase[1])
+
 def _testcasegroup(idprefix, *testcases):
-  return [pytest.param(*x, id="%s<'%s' = '%s'>" % (idprefix, x[0], x[1]))
+  return [pytest.param(*x[:4], id=_tcid(idprefix, x))
           for x in testcases]
+
+def _generatecases(idsuffix, fn, answers, *inputs):
+  return [('$%s(%s)' % (fn, ','.join(x)), *answers(x), idsuffix)
+          for x in product(*inputs)]
+
+def resolve_var(v, track, missing='?', stripped=False):
+  if '%' in v or stripped:
+    if not stripped:
+      v = v.strip('%')
+    return track[v] if v in track else missing
+  return v
+
+def resolve_int_var(v, track, stripped=False):
+  try:
+    if stripped:
+      return int(v)
+    else:
+      return int(v.rstrip(' abc').lstrip(' '))
+  except ValueError:
+    pass
+
+  r = resolve_var(v, track, missing=0, stripped=stripped)
+
+  try:
+    return int(r)
+  except ValueError:
+    return 0
+
 
 test_eval_cases = [
     # Basic parsing tests -- test various interesting parser states
@@ -418,6 +451,30 @@ test_eval_cases = [
       ('*$ifgreater(%artist%,-1%artist%,%missing%,no)*', '*?*', False, cs_01),
       ('*$ifgreater(%track%,-1%track%,%track%,no)*', '*01*', True, cs_01),
       ('*$ifgreater(%missing%,-1%missing%,%track%,no)*', '*01*', True, cs_01),
+      # $iflonger()
+      ('*$iflonger()*', '*[INVALID $IFLONGER SYNTAX]*', False, {}),
+      ('*$iflonger(a)*', '*[INVALID $IFLONGER SYNTAX]*', False, {}),
+      ('*$iflonger(,)*', '*[INVALID $IFLONGER SYNTAX]*', False, {}),
+      ('*$iflonger(,,)*', '*[INVALID $IFLONGER SYNTAX]*', False, {}),
+      ('*$iflonger(,,,)*', '**', False, {}),
+      ('*$iflonger(,,,,)*', '*[INVALID $IFLONGER SYNTAX]*', False, {}),
+      *_generatecases('generated', 'iflonger',
+        lambda x: (
+          resolve_var(x[2], cs_01)
+            if len(resolve_var(x[0], cs_01)) > resolve_int_var(x[1], cs_01)
+            else resolve_var(x[3], cs_01),
+          len(resolve_var(x[0], cs_01)) > resolve_int_var(x[1], cs_01)
+            and 'A' in x[2]  # Bit of a hack here to avoid %MISSING% = True
+            or len(resolve_var(x[0], cs_01)) <= resolve_int_var(x[1], cs_01)
+            and 'A' in x[3],
+          cs_01),
+        ('', '0', '00', '-0', '1', '-1', '2', 'zero', 'one', '123 a', '-123 a',
+          ' ', ' ' * 2, ' ' * 3, '%TRACKNUMBER%', '%ARTIST%', '%MISSING%'),
+        ('', '0', '-0', '1', '-1', '2', 'zero', 'one', ' 123 a', ' -123 a',
+          '%TRACKNUMBER%', '%ARTIST%', '%MISSING%'),
+        ('yes', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%'),
+        ('no', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%'),
+      ),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
@@ -471,20 +528,6 @@ expected_resolutions = arithmetic_resolutions.copy()
 expected_resolutions.update(boolean_resolutions)
 
 
-def resolve_int_var(fn, v, track):
-  print("[TEST] Attempting to resolve variable '%s' for fn '%s'" % (v, fn))
-  try:
-    return int(v)
-  except ValueError:
-    pass
-
-  try:
-    r = int(track[v]) if v in track else 0
-  except ValueError:
-    return track[v]
-  return r
-
-
 # Generate arithmetic and boolean tests
 def generate_tests():
   generated_cases = []
@@ -513,11 +556,10 @@ def generate_tests():
         '123', '-456', '-', '0', '-0', '007', '-007', '?',
         '%TOTALDISCS%', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%',
     ):
-      testarg_stripped = testarg.strip('%')
       fmt = '$%s(%s)' % (fn, testarg)
 
       if group == 'arithmetic':
-        expected = unistr(resolve_int_var(fn, testarg_stripped, cs_01))
+        expected = unistr(resolve_int_var(testarg, cs_01))
         try:
           expected = unistr(int(expected))
         except ValueError:
@@ -525,6 +567,7 @@ def generate_tests():
       elif group == 'boolean':
         expected = ''
 
+      testarg_stripped = testarg.strip('%')
       expected_truth = testarg_stripped in cs_01
 
       try:
@@ -567,9 +610,8 @@ def generate_tests():
         if type(t1) is int or type(t1) is not int and '%' not in t1:
           s1 = unistr(t1)
           literal_s1 = "'" + s1 + "'"
-          a1 = t1 if type(t1) is int else resolve_int_var(fn, t1, cs_01)
-          a2 = t2 if type(t2) is int else resolve_int_var(
-              fn, t2.strip('%'), cs_01)
+          a1 = t1 if type(t1) is int else resolve_int_var(t1, cs_01)
+          a2 = t2 if type(t2) is int else resolve_int_var(t2, cs_01)
           fmt = '$%s(%s,%s)' % (fn, literal_s1, t2)
           expected = '' if group == 'boolean' else unistr(answer(a1, a2))
           expected_truth = False if fn == 'and' else '%' in unistr(t2)
@@ -603,8 +645,8 @@ def generate_tests():
         fmt = '$%s(%s,%s)' % (fn, t1g, t2g)
         t1s = t1g.lstrip('% ').rstrip(stripchars)
         t2s = t2g.lstrip('% ').rstrip(stripchars)
-        val1 = resolve_int_var(fn, t1s, cs_01)
-        val2 = resolve_int_var(fn, t2s, cs_01)
+        val1 = resolve_int_var(t1s, cs_01, stripped=True)
+        val2 = resolve_int_var(t2s, cs_01, stripped=True)
 
         if group == 'arithmetic':
           expected = unistr(answer(val1, val2))
@@ -668,7 +710,7 @@ def generate_tests():
             map(lambda x:
                 x.lstrip('% ').replace('2 -9-', '2').rstrip(stripchars),
               map(unistr, t))]
-      vals = [resolve_int_var(fn, x, cs_01) for x in ts]
+      vals = [resolve_int_var(x, cs_01, stripped=True) for x in ts]
 
       if group == 'boolean':
         expected = ''
