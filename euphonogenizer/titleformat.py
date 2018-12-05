@@ -1029,7 +1029,7 @@ foo_function_vtable = {
     'if2': {2: foo_if2, 'n': foo_invalid('if2')},
     'if3': {0: foo_false, 1: foo_false, 'n': foo_if3},
     'ifequal': {4: foo_ifequal, 'n': foo_invalid('ifequal')},
-    'ifgreater': {4: foo_ifgreater},
+    'ifgreater': {4: foo_ifgreater, 'n': foo_invalid('ifgreater')},
     'iflonger': {4: foo_iflonger},
     'select': {0: foo_false, 1: foo_false, 'n': foo_select},
     'add': {0: foo_zero, 1: foo_nnop, 'n': foo_add},
