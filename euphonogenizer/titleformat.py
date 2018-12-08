@@ -263,6 +263,10 @@ def foo_select(track, memory, va_n_a1_aN):
   if n > 0 and n <= len(va_n_a1_aN) - 1:
     return va_n_a1_aN[n].eval()
 
+def foo_select2(track, memory, va_n_a1_a2):
+  if __foo_va_conv_n_lazy_int(va_n_a1_a2[0]) == 1:
+    return va_n_a1_a2[1].eval()
+
 def foo_add(track, memory, va_aN):
   value = __foo_va_conv_n_lazy(va_aN[0])
   for a in va_aN[1:]:
@@ -1031,7 +1035,7 @@ foo_function_vtable = {
     'ifequal': {4: foo_ifequal, 'n': foo_invalid('ifequal')},
     'ifgreater': {4: foo_ifgreater, 'n': foo_invalid('ifgreater')},
     'iflonger': {4: foo_iflonger, 'n': foo_invalid('iflonger')},
-    'select': {0: foo_false, 1: foo_false, 'n': foo_select},
+    'select': {0: foo_false, 1: foo_false, 2: foo_select2, 'n': foo_select},
     'add': {0: foo_zero, 1: foo_nnop, 'n': foo_add},
     'div': {0: foo_false, 1: foo_nnop, 'n': foo_div},
     # TODO: With strict rules, $greater 'n' should throw exception
