@@ -475,6 +475,54 @@ test_eval_cases = [
         ('yes', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%'),
         ('no', '%TRACKNUMBER%', '%ARTIST%', '%MISSING%'),
       ),
+      # $select()
+      ('*$select()*', '**', False, {}),
+      ('*$select(a)*' ,'**', False, {}),
+      *_generatecases('generated:arity2', 'select',
+        lambda x: (
+          resolve_var(x[1], cs_01)
+            if resolve_int_var(x[0], cs_01) == 1 else '',
+          resolve_int_var(x[0], cs_01) == 1 and 'A' in x[1],
+          cs_01),
+        ('', 'a', '0', '1', '2', '3', '-1', '-2',
+          '%ARTIST%', '%TRACKNUMBER%', '%missing%'),
+        ('', 'a', '123', '%ARTIST%', '%TRACKNUMBER%', '%missing%'),
+      ),
+      *_generatecases('generated:arity3', 'select',
+        lambda x: (
+          *(lambda i=resolve_int_var(x[0], cs_01):
+              (
+                (resolve_var(x[1], cs_01), resolve_var(x[2], cs_01))[i - 1]
+                  if i > 0 and i <= 2 else '',
+                i > 0 and i <= 2 and 'A' in x[i],
+              )
+            )(),
+          cs_01),
+        ('', 'a', '0', '1', '2', '3', '-1', '-2', '-3',
+          '%ARTIST%', '%TRACKNUMBER%', '%TOTALDISCS%', '%missing%'),
+        ('', 'a', '123', '%ARTIST%', '%TRACKNUMBER%', '%missing%'),
+        ('', 'b', '-456', '%ARTIST%', '%TRACKNUMBER%', '%missing%'),
+      ),
+      *_generatecases('generated:arity4', 'select',
+        lambda x: (
+          *(lambda i=resolve_int_var(x[0], cs_01):
+              (
+                (
+                  resolve_var(x[1], cs_01),
+                  resolve_var(x[2], cs_01),
+                  resolve_var(x[3], cs_01),
+                )[i - 1]
+                  if i > 0 and i <= 3 else '',
+                i > 0 and i <= 3 and 'A' in x[i],
+              )
+            )(),
+          cs_01),
+        ('', 'a', '0', '1', '2', '3', '-1', '-4',
+          '%ARTIST%', '%TOTALDISCS%', '%missing%'),
+        ('', 'a', '%ARTIST%', '%missing%'),
+        ('', 'b', '%TRACKNUMBER%', '%missing%'),
+        ('', 'c', '%DATE%', '%missing%'),
+      ),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
