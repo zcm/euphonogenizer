@@ -19,6 +19,135 @@ import unicodedata
 from .common import dbg, unistr
 
 
+class EvaluatorAtom:
+  def __init__(self, string_value, truth_value):
+    self.string_value = string_value
+    self.truth_value = truth_value
+
+  def __add__(self, other):
+    return EvaluatorAtom(
+        self.string_value + other.string_value,
+        self.truth_value or other.truth_value)
+
+  def __iadd__(self, other):
+    self.string_value += other.string_value
+    self.truth_value |= other.truth_value
+    return self
+
+  def __sub__(self, other):
+    return EvaluatorAtom(
+        self.string_value - other.string_value,
+        self.truth_value or other.truth_value)
+
+  def __isub__(self, other):
+    self.string_value -= other.string_value
+    self.truth_value |= other.truth_value
+    return self
+
+  def __mul__(self, other):
+    return EvaluatorAtom(
+        self.string_value * other.string_value,
+        self.truth_value or other.truth_value)
+
+  def __imul__(self, other):
+    self.string_value *= other.string_value
+    self.truth_value |= other.truth_value
+    return self
+
+  def __foo_div_logic(self, x, y):
+    if y == 0:
+      # Foobar skips division for zeros instead of exploding.
+      return x
+    # For some reason, Foobar rounds up when negative and down when positive.
+    if x * y < 0:
+      return x * -1 // y * -1
+    return x // y
+
+  def __floordiv__(self, other):
+    return EvaluatorAtom(
+        self.__foo_div_logic(self.string_value, other.string_value),
+        self.truth_value or other.truth_value)
+
+  def __ifloordiv__(self, other):
+    self.string_value = self.__foo_div_logic(
+        self.string_value, other.string_value)
+    self.truth_value |= other.truth_value
+    return self
+
+  def __foo_mod_logic(self, x, y):
+    if x == 0:
+      return 0
+    if y == 0:
+      return x
+    return x % y
+
+  def __mod__(self, other):
+    return EvaluatorAtom(
+        self.__foo_mod_logic(self.string_value, other.string_value),
+        self.truth_value or other.truth_value)
+
+  def __imod__(self, other):
+    self.string_value = self.__foo_mod_logic(
+        self.string_value, other.string_value)
+    self.truth_value |= other.truth_value
+    return self
+
+  def __eq__(self, other):
+    if (isinstance(other, EvaluatorAtom)):
+      return (self.string_value == other.string_value
+          and self.truth_value is other.truth_value)
+    return NotImplemented
+
+  def __ne__(self, other):
+    e = self.__eq__(other)
+    return NotImplemented if e is NotImplemented else not e
+
+  def __gt__(self, other):
+    return self.string_value > other.string_value
+
+  def __lt__(self, other):
+    return self.string_value < other.string_value
+
+  def __and__(self, other):
+    return self.truth_value and other.truth_value
+
+  def __iand__(self, other):
+    self.truth_value &= other.truth_value
+    return self
+
+  def __or__(self, other):
+    return self.truth_value or other.truth_value
+
+  def __ior__(self, other):
+    self.truth_value |= other.truth_value
+    return self
+
+  def __hash__(self):
+    return hash(tuple(sorted(self.__dict__.items())))
+
+  def __str__(self):
+    return str(self.string_value)
+
+  def __unicode__(self):
+    return unistr(self.string_value)
+
+  def __nonzero__(self):
+    return self.truth_value
+
+  def __bool__(self):
+    return self.truth_value
+
+  def __len__(self):
+    return len(str(self.string_value))
+
+  def __repr__(self):
+    return 'atom(%s, %s)' % (repr(self.string_value), self.truth_value)
+
+  def eval(self):
+    # Evaluating an expression that's already been evaluated returns itself.
+    return self
+
+
 def magic_map_filename(formatter, track):
   value = track.get('@')
   if value is not None and value is not False:
@@ -373,26 +502,33 @@ def foo_xor(track, memory, va_N):
     r ^= __foo_va_conv_bool_lazy(each)
   return r
 
+__foo_abbr_charstrip = re.compile('[()/\\\\,]')
+
 def foo_abbr(string_value):
-  parts = re.sub('[()]', '', string_value).split()
+  parts = __foo_abbr_charstrip.sub(' ', string_value).split(' ')
   abbr = ''
   for each in parts:
-    if each[0].isalnum():
-      abbr += each[0]
-    else:
-      abbr += each
+    if len(each):
+      if each.isnumeric():
+        abbr += each
+      else:
+        if each[0] in ('[]'):
+          abbr += each
+        else:
+          abbr += each[0]
   return abbr
 
-def foo_abbr_arity1(track, memory, va_x):
+def foo_abbr1(track, memory, va_x):
   x = va_x[0].eval()
-  abbr = foo_abbr(unistr(x))
-  return EvaluatorAtom(abbr, __foo_bool(x))
+  x.string_value = foo_abbr(str(x))
+  return x
 
-def foo_abbr_arity2(track, memory, va_x_len):
+def foo_abbr2(track, memory, va_x_len):
   x = va_x_len[0].eval()
   length = __foo_va_conv_n_lazy_int(va_x_len[1])
-  if len(unistr(x)) > length:
-    return foo_abbr_arity1(track, memory, [x])
+  sx = str(x)
+  if len(sx) > length:
+    x.string_value = foo_abbr(sx)
   return x
 
 def foo_ansi(track, memory, va_x):
@@ -1053,7 +1189,7 @@ foo_function_vtable = {
     # TODO: With strict rules, $not 'n' should throw exception
     'not': {0: foo_false, 1: foo_not, 'n': foo_false},
     'xor': {0: foo_false, 1: foo_bnop, 'n': foo_xor},
-    'abbr': {1: foo_abbr_arity1, 2: foo_abbr_arity2},
+    'abbr': {1: foo_abbr1, 2: foo_abbr2, 'n': foo_false},
     'ansi': {1: foo_ansi},
     'ascii': {1: foo_ascii},
     'caps': {1: foo_caps},
@@ -1199,134 +1335,6 @@ def foobar_filename_escape(output):
   output = re.sub('"', "''", output)
   output = re.sub('[?<>]', '_', output)
   return output
-
-class EvaluatorAtom:
-  def __init__(self, string_value, truth_value):
-    self.string_value = string_value
-    self.truth_value = truth_value
-
-  def __add__(self, other):
-    return EvaluatorAtom(
-        self.string_value + other.string_value,
-        self.truth_value or other.truth_value)
-
-  def __iadd__(self, other):
-    self.string_value += other.string_value
-    self.truth_value |= other.truth_value
-    return self
-
-  def __sub__(self, other):
-    return EvaluatorAtom(
-        self.string_value - other.string_value,
-        self.truth_value or other.truth_value)
-
-  def __isub__(self, other):
-    self.string_value -= other.string_value
-    self.truth_value |= other.truth_value
-    return self
-
-  def __mul__(self, other):
-    return EvaluatorAtom(
-        self.string_value * other.string_value,
-        self.truth_value or other.truth_value)
-
-  def __imul__(self, other):
-    self.string_value *= other.string_value
-    self.truth_value |= other.truth_value
-    return self
-
-  def __foo_div_logic(self, x, y):
-    if y == 0:
-      # Foobar skips division for zeros instead of exploding.
-      return x
-    # For some reason, Foobar rounds up when negative and down when positive.
-    if x * y < 0:
-      return x * -1 // y * -1
-    return x // y
-
-  def __floordiv__(self, other):
-    return EvaluatorAtom(
-        self.__foo_div_logic(self.string_value, other.string_value),
-        self.truth_value or other.truth_value)
-
-  def __ifloordiv__(self, other):
-    self.string_value = self.__foo_div_logic(
-        self.string_value, other.string_value)
-    self.truth_value |= other.truth_value
-    return self
-
-  def __foo_mod_logic(self, x, y):
-    if x == 0:
-      return 0
-    if y == 0:
-      return x
-    return x % y
-
-  def __mod__(self, other):
-    return EvaluatorAtom(
-        self.__foo_mod_logic(self.string_value, other.string_value),
-        self.truth_value or other.truth_value)
-
-  def __imod__(self, other):
-    self.string_value = self.__foo_mod_logic(
-        self.string_value, other.string_value)
-    self.truth_value |= other.truth_value
-    return self
-
-  def __eq__(self, other):
-    if (isinstance(other, EvaluatorAtom)):
-      return (self.string_value == other.string_value
-          and self.truth_value is other.truth_value)
-    return NotImplemented
-
-  def __ne__(self, other):
-    e = self.__eq__(other)
-    return NotImplemented if e is NotImplemented else not e
-
-  def __gt__(self, other):
-    return self.string_value > other.string_value
-
-  def __lt__(self, other):
-    return self.string_value < other.string_value
-
-  def __and__(self, other):
-    return self.truth_value and other.truth_value
-
-  def __iand__(self, other):
-    self.truth_value &= other.truth_value
-    return self
-
-  def __or__(self, other):
-    return self.truth_value or other.truth_value
-
-  def __ior__(self, other):
-    self.truth_value |= other.truth_value
-    return self
-
-  def __hash__(self):
-    return hash(tuple(sorted(self.__dict__.items())))
-
-  def __str__(self):
-    return str(self.string_value)
-
-  def __unicode__(self):
-    return unistr(self.string_value)
-
-  def __nonzero__(self):
-    return self.truth_value
-
-  def __bool__(self):
-    return self.truth_value
-
-  def __len__(self):
-    return len(str(self.string_value))
-
-  def __repr__(self):
-    return 'atom(%s, %s)' % (repr(self.string_value), self.truth_value)
-
-  def eval(self):
-    # Evaluating an expression that's already been evaluated returns itself.
-    return self
 
 
 class LazyExpression:
