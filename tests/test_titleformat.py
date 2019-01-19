@@ -569,6 +569,12 @@ test_eval_cases = [
       # Examples from documentation
       ("$abbr('This is a Long Title (12-inch version) [needs tags]')",
         'TiaLT1v[needst', False, {}),
+      # $ansi()
+      ('$ansi()', '', False, {}),
+      ('$ansi( a )', ' a ', False, {}),
+      ('$ansi(%artist%)', 'Collective Soul', True, cs_01),
+      ('$ansi(2814 - 新しい日の誕生)', '2814 - ???????', False, {}),
+      ('$ansi(a,b)', '', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(

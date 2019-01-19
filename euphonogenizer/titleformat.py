@@ -537,8 +537,8 @@ def foo_ansi(track, memory, va_x):
   # wide characters as Foobar, which produces two '??' instead of one. I don't
   # have a multibyte build of Python lying around right now, so I can't
   # confirm at the moment. But really, it probably doesn't matter.
-  result = unistr(unistr(x).encode('latin-1', errors='replace'))
-  return EvaluatorAtom(result, __foo_bool(x))
+  result = unistr(x).encode('latin-1', errors='replace')
+  return EvaluatorAtom(result.decode('utf-8', errors='replace'), __foo_bool(x))
 
 def foo_ascii(track, memory, va_x):
   x = va_x[0].eval()
@@ -1190,7 +1190,8 @@ foo_function_vtable = {
     'not': {0: foo_false, 1: foo_not, 'n': foo_false},
     'xor': {0: foo_false, 1: foo_bnop, 'n': foo_xor},
     'abbr': {1: foo_abbr1, 2: foo_abbr2, 'n': foo_false},
-    'ansi': {1: foo_ansi},
+    # TODO: With strict rules, $ansi 'n' should throw exception
+    'ansi': {0: foo_false, 1: foo_ansi, 'n': foo_false},
     'ascii': {1: foo_ascii},
     'caps': {1: foo_caps},
     'caps2': {1: foo_caps2},
