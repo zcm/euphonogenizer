@@ -531,19 +531,94 @@ def foo_abbr2(track, memory, va_x_len):
     x.string_value = foo_abbr(sx)
   return x
 
+
+__foo_ascii_charmap = {
+    # Latin-1 Supplement
+    '¡':'!', '¢':'c', '¤':'$', '¥':'Y', '¦':'|', '©':'C', 'ª':'a', '«':'<',
+    '­':'-', '®':'R', '²':'2', '³':'3', '·':'.', '¸':',', '¹':'1', 'º':'o',
+    '»':'>', 'À':'A', 'Á':'A', 'Â':'A', 'Ã':'A', 'Ä':'A', 'Å':'A', 'Æ':'A',
+    'Ç':'C', 'È':'E', 'É':'E', 'Ê':'E', 'Ë':'E', 'Ì':'I', 'Í':'I', 'Î':'I',
+    'Ï':'I', 'Ð':'D', 'Ñ':'N', 'Ò':'O', 'Ó':'O', 'Ô':'O', 'Õ':'O', 'Ö':'O',
+    'Ø':'O', 'Ù':'U', 'Ú':'U', 'Û':'U', 'Ü':'U', 'Ý':'Y', 'à':'a', 'á':'a',
+    'â':'a', 'ã':'a', 'ä':'a', 'å':'a', 'æ':'a', 'ç':'c', 'è':'e', 'é':'e',
+    'ê':'e', 'ë':'e', 'ì':'i', 'í':'i', 'î':'i', 'ï':'i', 'ñ':'n', 'ò':'o',
+    'ó':'o', 'ô':'o', 'õ':'o', 'ö':'o', 'ø':'o', 'ù':'u', 'ú':'u', 'û':'u',
+    'ü':'u', 'ý':'y', 'þ':'?', 'ÿ':'y',
+    # Latin Extended-A
+    'Ā':'A', 'ā':'a', 'Ă':'A', 'ă':'a', 'Ą':'A', 'ą':'a', 'Ć':'C', 'ć':'c',
+    'Ĉ':'C', 'ĉ':'c', 'Ċ':'C', 'ċ':'c', 'Č':'C', 'č':'c', 'Ď':'D', 'ď':'d',
+    'Đ':'D', 'đ':'d', 'Ē':'E', 'ē':'e', 'Ĕ':'E', 'ĕ':'e', 'Ė':'E', 'ė':'e',
+    'Ę':'E', 'ę':'e', 'Ě':'E', 'ě':'e', 'Ĝ':'G', 'ĝ':'g', 'Ğ':'G', 'ğ':'g',
+    'Ġ':'G', 'ġ':'g', 'Ģ':'G', 'ģ':'g', 'Ĥ':'H', 'ĥ':'h', 'Ħ':'H', 'ħ':'h',
+    'Ĩ':'I', 'ĩ':'i', 'Ī':'I', 'ī':'i', 'Ĭ':'I', 'ĭ':'i', 'Į':'I', 'į':'i',
+    'İ':'I', 'ı':'i', 'Ĵ':'J', 'ĵ':'j', 'Ķ':'K', 'ķ':'k', 'Ĺ':'L', 'ĺ':'l',
+    'Ļ':'L', 'ļ':'l', 'Ľ':'L', 'ľ':'l', 'Ł':'L', 'ł':'l', 'Ń':'N', 'ń':'n',
+    'Ņ':'N', 'ņ':'n', 'Ň':'N', 'ň':'n', 'Ō':'O', 'ō':'o', 'Ŏ':'O', 'ŏ':'o',
+    'Ő':'O', 'ő':'o', 'Œ':'O', 'œ':'o', 'Ŕ':'R', 'ŕ':'r', 'Ŗ':'R', 'ŗ':'r',
+    'Ř':'R', 'ř':'r', 'Ś':'S', 'ś':'s', 'Ŝ':'S', 'ŝ':'s', 'Ş':'S', 'ş':'s',
+    'Š':'S', 'š':'s', 'Ţ':'T', 'ţ':'t', 'Ť':'T', 'ť':'t', 'Ŧ':'T', 'ŧ':'t',
+    'Ũ':'U', 'ũ':'u', 'Ū':'U', 'ū':'u', 'Ŭ':'U', 'ŭ':'u', 'Ů':'U', 'ů':'u',
+    'Ű':'U', 'ű':'u', 'Ų':'U', 'ų':'u', 'Ŵ':'W', 'ŵ':'w', 'Ŷ':'Y', 'ŷ':'y',
+    'Ÿ':'Y', 'Ź':'Z', 'ź':'z', 'Ż':'Z', 'ż':'z', 'Ž':'Z', 'ž':'z',
+    # Latin Extended-B
+    'ƀ':'b', 'Ɖ':'D', 'Ƒ':'F', 'ƒ':'f', 'Ɨ':'I', 'ƚ':'l', 'Ɵ':'O', 'Ơ':'O',
+    'ơ':'o', 'ƫ':'t', 'Ʈ':'T', 'Ư':'U', 'ư':'u', 'ƶ':'z', 'Ǎ':'A', 'ǎ':'a',
+    'Ǐ':'I', 'ǐ':'i', 'Ǒ':'O', 'ǒ':'o', 'Ǔ':'U', 'ǔ':'u', 'Ǖ':'U', 'ǖ':'u',
+    'Ǘ':'U', 'ǘ':'u', 'Ǚ':'U', 'ǚ':'u', 'Ǜ':'U', 'ǜ':'u', 'Ǟ':'A', 'ǟ':'a',
+    'Ǥ':'G', 'ǥ':'g', 'Ǧ':'G', 'ǧ':'g', 'Ǩ':'K', 'ǩ':'k', 'Ǫ':'O', 'ǫ':'o',
+    'Ǭ':'O', 'ǭ':'o', 'ǰ':'j',
+    # General Punctuation
+    '\u2000':' ', '\u2001':' ', '\u2002':' ', '\u2003':' ', '\u2004':' ',
+    '\u2005':' ', '\u2006':' ',
+    '‐':'-', '‑':'-', '–':'-', '—':'-', '‘':"'", '’':"'", '‚':',', '“':'"',
+    '”':'"', '„':'"', '•':'.', '…':'.', '′':"'", '‵':'`', '‹':'<', '›':'>',
+}
+
+__foo_ansi_charmap = {
+    'Đ':'Ð', 'Ɖ':'Ð', 'Ƒ':'ƒ', 'ǀ':'|', 'ǃ':'!', '‗':'=', '․':'·', '⁄':'/',
+}
+
+
+def __foo_ansi_replace(exc):
+  if isinstance(exc, UnicodeEncodeError):
+    s = ''
+    for c in exc.object[exc.start:exc.end]:
+      try:
+        s += __foo_ansi_charmap[c]
+      except KeyError:
+        try:
+          s += __foo_ascii_charmap[c]
+        except KeyError:
+          s += '?'
+    return (s, exc.end)
+  return codecs.replace_error(exc)
+
+def __foo_ascii_replace(exc):
+  if isinstance(exc, UnicodeEncodeError):
+    s = ''
+    for c in exc.object[exc.start:exc.end]:
+      s += '?' if c not in __foo_ascii_charmap else __foo_ascii_charmap[c]
+    return (s, exc.end)
+  return codecs.replace_error(exc)
+
+
+codecs.register_error('__foo_ansi_replace', __foo_ansi_replace)
+codecs.register_error('__foo_ascii_replace', __foo_ascii_replace)
+
+
 def foo_ansi(track, memory, va_x):
   x = va_x[0].eval()
   # Doing the conversion this way will probably not produce the same output with
   # wide characters as Foobar, which produces two '??' instead of one. I don't
   # have a multibyte build of Python lying around right now, so I can't
   # confirm at the moment. But really, it probably doesn't matter.
-  result = unistr(x).encode('latin-1', errors='replace')
-  return EvaluatorAtom(result.decode('utf-8', errors='replace'), __foo_bool(x))
+  result = unistr(x).encode('windows-1252', '__foo_ansi_replace')
+  return EvaluatorAtom(str(result, 'windows-1252', 'replace'), __foo_bool(x))
 
 def foo_ascii(track, memory, va_x):
   x = va_x[0].eval()
-  result = unistr(unistr(x).encode('ascii', errors='replace'))
-  return EvaluatorAtom(result, __foo_bool(x))
+  result = unistr(x).encode('ascii', '__foo_ascii_replace')
+  return EvaluatorAtom(result.decode('utf-8', 'replace'), __foo_bool(x))
 
 def foo_caps_impl(va_x, lower):
   x = va_x[0].eval()
@@ -1192,7 +1267,8 @@ foo_function_vtable = {
     'abbr': {1: foo_abbr1, 2: foo_abbr2, 'n': foo_false},
     # TODO: With strict rules, $ansi 'n' should throw exception
     'ansi': {0: foo_false, 1: foo_ansi, 'n': foo_false},
-    'ascii': {1: foo_ascii},
+    # TODO: With strict rules, $ascii 'n' should throw exception
+    'ascii': {0: foo_false, 1: foo_ascii, 'n': foo_false},
     'caps': {1: foo_caps},
     'caps2': {1: foo_caps2},
     'char': {1: foo_char},
