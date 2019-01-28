@@ -1269,7 +1269,8 @@ foo_function_vtable = {
     'ansi': {0: foo_false, 1: foo_ansi, 'n': foo_false},
     # TODO: With strict rules, $ascii 'n' should throw exception
     'ascii': {0: foo_false, 1: foo_ascii, 'n': foo_false},
-    'caps': {1: foo_caps},
+    # TODO: With strict rules, $caps 'n' should throw exception
+    'caps': {0: foo_false, 1: foo_caps, 'n': foo_false},
     'caps2': {1: foo_caps2},
     'char': {1: foo_char},
     'crc32': {1: foo_crc32},
