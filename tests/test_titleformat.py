@@ -619,6 +619,17 @@ test_eval_cases = [
         'ΜΙᾺ ΠΆΠΙΑ ΜᾺ ΠΟΙΆ ΠΆΠΙΑ;', False, {}),
       ('$caps2(%artist%)', 'Collective Soul', True, cs_01),
       ('$caps2(%artist%, b)', '', False, cs_01),
+      # $char
+      ('$char()', '', False, {}),
+      ('$char(0)', '', False, {}),
+      ('$char(-1)', '', False, {}),
+      ('$char(208)$char(111)$char(103)$char(101)', 'Ðoge', False, {}),
+      ('$char(20811)', '克', False, {}),
+      ('$char(1048575)', '󿿿', False, {}),
+      ('$char(1048576)', '?', False, {}),
+      ('$char(asdf)', '', False, {}),
+      ('$char(%totaltracks%)', '', False, cs_01),
+      ('$char(a,b)', '', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(

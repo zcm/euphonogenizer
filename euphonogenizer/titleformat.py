@@ -13,6 +13,7 @@ import os
 import platform
 import random
 import re
+import six
 import sys
 import unicodedata
 
@@ -646,8 +647,12 @@ def foo_char(track, memory, va_x):
   x = __foo_va_conv_n_lazy_int(va_x[0])
   if x <= 0:
     return ''
+  if x > 1048575:
+    # FB2k only supports doing this with 20-bit integers for some reason.
+    # In the future, we might want a better, non-compliant implementation.
+    return '?'
   try:
-    return unichr(x)
+    return six.unichr(x)
   except ValueError:
     # Also happens when using a narrow Python build
     return '?'
@@ -1269,7 +1274,8 @@ foo_function_vtable = {
     # TODO: With strict rules, $caps and $caps2 'n' should throw exception
     'caps': {0: foo_false, 1: foo_caps, 'n': foo_false},
     'caps2': {0: foo_false, 1: foo_caps2, 'n': foo_false},
-    'char': {1: foo_char},
+    # TODO: Strict rules, etc. You get the idea.
+    'char': {0: foo_false, 1: foo_char, 'n': foo_false},
     'crc32': {1: foo_crc32},
     'crlf': {0: foo_crlf},
     'cut': {2: foo_cut},
