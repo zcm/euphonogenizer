@@ -620,7 +620,7 @@ def foo_ascii(track, memory, va_x):
   result = unistr(x).encode('ascii', '__foo_ascii_replace')
   return EvaluatorAtom(result.decode('utf-8', 'replace'), __foo_bool(x))
 
-def foo_caps_impl(va_x, lower):
+def foo_caps_impl(va_x, on_nonfirst):
   x = va_x[0].eval()
   result = ''
   new_word = True
@@ -633,17 +633,14 @@ def foo_caps_impl(va_x, lower):
         result += c.upper()
         new_word = False
       else:
-        if lower:
-          result += c.lower()
-        else:
-          result += c
+        result += on_nonfirst(c)
   return EvaluatorAtom(result, __foo_bool(x))
 
 def foo_caps(track, memory, va_x):
-  return foo_caps_impl(va_x, lower=True)
+  return foo_caps_impl(va_x, on_nonfirst=lambda c: c.lower())
 
 def foo_caps2(track, memory, va_x):
-  return foo_caps_impl(va_x, lower=False)
+  return foo_caps_impl(va_x, on_nonfirst=lambda c: c)
 
 def foo_char(track, memory, va_x):
   x = __foo_va_conv_n_lazy_int(va_x[0])
@@ -1269,9 +1266,9 @@ foo_function_vtable = {
     'ansi': {0: foo_false, 1: foo_ansi, 'n': foo_false},
     # TODO: With strict rules, $ascii 'n' should throw exception
     'ascii': {0: foo_false, 1: foo_ascii, 'n': foo_false},
-    # TODO: With strict rules, $caps 'n' should throw exception
+    # TODO: With strict rules, $caps and $caps2 'n' should throw exception
     'caps': {0: foo_false, 1: foo_caps, 'n': foo_false},
-    'caps2': {1: foo_caps2},
+    'caps2': {0: foo_false, 1: foo_caps2, 'n': foo_false},
     'char': {1: foo_char},
     'crc32': {1: foo_crc32},
     'crlf': {0: foo_crlf},
