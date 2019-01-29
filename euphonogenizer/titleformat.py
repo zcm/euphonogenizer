@@ -17,9 +17,12 @@ import six
 import sys
 import unicodedata
 
-from .common import dbg, unistr
+from .common import dbg
+
+from six import text_type
 
 
+@six.python_2_unicode_compatible
 class EvaluatorAtom:
   def __init__(self, string_value, truth_value):
     self.string_value = string_value
@@ -127,10 +130,7 @@ class EvaluatorAtom:
     return hash(tuple(sorted(self.__dict__.items())))
 
   def __str__(self):
-    return str(self.string_value)
-
-  def __unicode__(self):
-    return unistr(self.string_value)
+    return text_type(self.string_value)
 
   def __nonzero__(self):
     return self.truth_value
@@ -152,14 +152,14 @@ class EvaluatorAtom:
 def magic_map_filename(formatter, track):
   value = track.get('@')
   if value is not None and value is not False:
-    return unistr(foo_filename(None, None, [value]))
+    return text_type(foo_filename(None, None, [value]))
   return None
 
 def magic_map_filename_ext(formatter, track):
   value = track.get('@')
   if value is not None and value is not False:
-    filename = unistr(foo_filename(None, None, [value]))
-    ext = unistr(foo_ext(None, None, [value]))
+    filename = text_type(foo_filename(None, None, [value]))
+    ext = text_type(foo_ext(None, None, [value]))
     if ext:
       filename += '.' + ext
     return filename
@@ -189,7 +189,7 @@ def magic_map_tracknumber(formatter, track):
 def magic_map_track_number(formatter, track):
   value = __find_tracknumber(track)
   if value is not None and value is not False:
-    return unistr(int(value))
+    return text_type(int(value))
   return None
 
 
@@ -333,7 +333,7 @@ def foo_nnop(track, memory, va):
       pass
 
     val = __foo_va_conv_n_unsafe(val)
-    val.string_value = unistr(val.string_value)
+    val.string_value = text_type(val.string_value)
     return val
   except AttributeError:
     pass
@@ -613,19 +613,19 @@ def foo_ansi(track, memory, va_x):
   # wide characters as Foobar, which produces two '??' instead of one. I don't
   # have a multibyte build of Python lying around right now, so I can't
   # confirm at the moment. But really, it probably doesn't matter.
-  result = unistr(x).encode('windows-1252', '__foo_ansi_replace')
+  result = text_type(x).encode('windows-1252', '__foo_ansi_replace')
   return EvaluatorAtom(str(result, 'windows-1252', 'replace'), __foo_bool(x))
 
 def foo_ascii(track, memory, va_x):
   x = va_x[0].eval()
-  result = unistr(x).encode('ascii', '__foo_ascii_replace')
+  result = text_type(x).encode('ascii', '__foo_ascii_replace')
   return EvaluatorAtom(result.decode('utf-8', 'replace'), __foo_bool(x))
 
 def foo_caps_impl(va_x, on_nonfirst):
   x = va_x[0].eval()
   result = ''
   new_word = True
-  for c in unistr(x):
+  for c in text_type(x):
     if __foo_is_word_sep(c):
       new_word = True
       result += c
@@ -661,7 +661,7 @@ def foo_char(track, memory, va_x):
 
 def foo_crc32(track, memory, va_x):
   x = va_x[0].eval()
-  crc = binascii.crc32(unistr(x))
+  crc = binascii.crc32(text_type(x))
   return EvaluatorAtom(crc, __foo_bool(x))
 
 def foo_crlf(track, memory, va):
@@ -672,7 +672,7 @@ def foo_cut(track, memory, va_a_len):
 
 def foo_directory_arity1(track, memory, va_x):
   x = va_x[0].eval()
-  parts = re.split('[\\\\/:|]', unistr(x))
+  parts = re.split('[\\\\/:|]', text_type(x))
   if len(parts) < 2:
     return EvaluatorAtom('', __foo_bool(x))
   return EvaluatorAtom(parts[-2], __foo_bool(x))
@@ -682,7 +682,7 @@ def foo_directory_arity2(track, memory, va_x_n):
   n = __foo_va_conv_n_lazy_int(va_x_n[1])
   if n <= 0:
     return EvaluatorAtom('', __foo_bool(x))
-  parts = re.split('[\\\\/:|]', unistr(x))
+  parts = re.split('[\\\\/:|]', text_type(x))
   parts_len = len(parts)
   if n >= parts_len or parts_len < 2:
     return EvaluatorAtom('', __foo_bool(x))
@@ -690,7 +690,7 @@ def foo_directory_arity2(track, memory, va_x_n):
 
 def foo_directory_path(track, memory, va_x):
   x = va_x[0].eval()
-  parts = re.split('[\\\\/:|]', unistr(x)[::-1], 1)
+  parts = re.split('[\\\\/:|]', text_type(x)[::-1], 1)
   if len(parts) < 2:
     return EvaluatorAtom('', __foo_bool(x))
   return EvaluatorAtom(parts[1][::-1], __foo_bool(x))
@@ -703,7 +703,7 @@ def foo_ext(track, memory, va_x):
   except AttributeError:
     pass
 
-  ext = unistr(x).split('.')[-1]
+  ext = text_type(x).split('.')[-1]
   for c in ext:
     if c in '/\\|:':
       return EvaluatorAtom('', __foo_bool(x))
@@ -717,7 +717,7 @@ def foo_filename(track, memory, va_x):
   except AttributeError:
     pass
 
-  x_str = unistr(x)
+  x_str = text_type(x)
   parts = re.split('[\\\\/:|]', x_str)
   parts_len = len(parts)
   if parts_len <= 0:
@@ -735,11 +735,11 @@ def foo_fix_eol_arity2(track, memory, va_x_indicator):
   indicator = va_x_indicator[1]
 
   try:
-    indicator = unistr(indicator.eval())
+    indicator = text_type(indicator.eval())
   except AttributeError:
     pass
 
-  result = unistr(x).split('\r\n')[0].split('\n')[0]
+  result = text_type(x).split('\r\n')[0].split('\n')[0]
 
   return EvaluatorAtom(result + indicator, __foo_bool(x))
 
@@ -765,16 +765,16 @@ def foo_hex_arity2(track, memory, va_n_len):
 
 def foo_insert(track, memory, va_a_b_n):
   a = va_a_b_n[0].eval()
-  a_str = unistr(a)
+  a_str = text_type(a)
   b = va_a_b_n[1].eval()
-  b_str = unistr(b)
+  b_str = text_type(b)
   n = __foo_va_conv_n_lazy_int(va_a_b_n[2])
   return EvaluatorAtom(a_str[0:n] + b_str + a_str[n:], __foo_bool(a))
 
 def foo_left(track, memory, va_a_len):
   a = va_a_len[0].eval()
   length = __foo_va_conv_n_lazy_int(va_a_len[1])
-  a_str = unistr(a)
+  a_str = text_type(a)
   a_len = len(a_str)
   if length < 0 or a_len == 0 or length >= a_len:
     return a
@@ -784,12 +784,12 @@ def foo_left(track, memory, va_a_len):
 
 def foo_len(track, memory, va_a):
   a = va_a[0].eval()
-  return EvaluatorAtom(len(unistr(a)), __foo_bool(a))
+  return EvaluatorAtom(len(text_type(a)), __foo_bool(a))
 
 def foo_len2(track, memory, va_a):
   a = va_a[0].eval()
   length = 0
-  str_a = unistr(a)
+  str_a = text_type(a)
   for c in str_a:
     width = unicodedata.east_asian_width(c)
     if width == 'N' or width == 'Na' or width == 'H':
@@ -801,20 +801,20 @@ def foo_len2(track, memory, va_a):
   return EvaluatorAtom(length, __foo_bool(a))
 
 def foo_longer(track, memory, va_a_b):
-  len_a = len(unistr(va_a_b[0].eval()))
-  len_b = len(unistr(va_a_b[1].eval()))
+  len_a = len(text_type(va_a_b[0].eval()))
+  len_b = len(text_type(va_a_b[1].eval()))
   return len_a > len_b
 
 def foo_lower(track, memory, va_a):
   a = va_a[0].eval()
-  return EvaluatorAtom(unistr(a).lower(), __foo_bool(a))
+  return EvaluatorAtom(text_type(a).lower(), __foo_bool(a))
 
 def foo_longest(track, memory, va_a1_aN):
   longest = None
   longest_len = -1
   for each in va_a1_aN:
     current = each.eval()
-    current_len = len(unistr(current))
+    current_len = len(text_type(current))
     if current_len > longest_len:
       longest = current
       longest_len = current_len
@@ -825,9 +825,9 @@ def foo_num(track, memory, va_n_len):
   length = __foo_va_conv_n_lazy_int(va_n_len[1])
   string_value = None
   if (length > 0):
-    string_value = unistr(__foo_va_conv_n(n)).zfill(length)
+    string_value = text_type(__foo_va_conv_n(n)).zfill(length)
   else:
-    string_value = unistr(__foo_int(__foo_va_conv_n(n)))
+    string_value = text_type(__foo_int(__foo_va_conv_n(n)))
   return EvaluatorAtom(string_value, __foo_bool(n))
 
 def foo_pad_universal(va_x_len_char, right):
@@ -836,14 +836,14 @@ def foo_pad_universal(va_x_len_char, right):
   char = va_x_len_char[2]
 
   try:
-    char = unistr(char.eval())[0]
+    char = text_type(char.eval())[0]
   except AttributeError:
     pass
 
   if not char:
     return x
 
-  x_str = unistr(x)
+  x_str = text_type(x)
   x_len = len(x_str)
 
   if x_len < length:
@@ -879,8 +879,8 @@ def foo_progress_universal(va_pos_range_len_a_b, is2):
   pos = va_pos_range_len_a_b[0].eval()
   range_value = va_pos_range_len_a_b[1].eval()
   length = __foo_va_conv_n_lazy_int(va_pos_range_len_a_b[2])
-  a = unistr(va_pos_range_len_a_b[3].eval())
-  b = unistr(va_pos_range_len_a_b[4].eval())
+  a = text_type(va_pos_range_len_a_b[3].eval())
+  b = text_type(va_pos_range_len_a_b[4].eval())
   pos_int = __foo_int(__foo_va_conv_n(pos))
   range_int = __foo_int(__foo_va_conv_n(range_value))
 
@@ -934,11 +934,11 @@ def foo_progress2(track, memory, va_pos_range_len_a_b):
 def foo_repeat(track, memory, va_a_n):
   a = va_a_n[0].eval()
   n = __foo_va_conv_n_lazy_int(va_a_n[1])
-  return EvaluatorAtom(unistr(a) * n, __foo_bool(a))
+  return EvaluatorAtom(text_type(a) * n, __foo_bool(a))
 
 def foo_replace_explode_recursive(a, va_a_bN_cN, i):
   if i + 1 < len(va_a_bN_cN):
-    b = unistr(va_a_bN_cN[i].eval())
+    b = text_type(va_a_bN_cN[i].eval())
     splits = a.split(b)
     current = []
     for each in splits:
@@ -956,7 +956,7 @@ def foo_replace_join_recursive(splits, va_a_bN_cN, i):
       sub_joined = foo_replace_join_recursive(each, va_a_bN_cN, i + 2)
       if sub_joined is not None:
         current.append(sub_joined)
-    c = unistr(va_a_bN_cN[i].eval())
+    c = text_type(va_a_bN_cN[i].eval())
     if not current:
       current = splits
     joined = c.join(current)
@@ -964,7 +964,7 @@ def foo_replace_join_recursive(splits, va_a_bN_cN, i):
 
 def foo_replace(track, memory, va_a_bN_cN):
   a = va_a_bN_cN[0].eval()
-  splits = foo_replace_explode_recursive(unistr(a), va_a_bN_cN, 1)
+  splits = foo_replace_explode_recursive(text_type(a), va_a_bN_cN, 1)
   result = foo_replace_join_recursive(splits, va_a_bN_cN, 2)
   # Truthfully, I have no idea if this is actually right, but it's probably good
   # enough for what it does. The sample cases check out, at least.
@@ -973,7 +973,7 @@ def foo_replace(track, memory, va_a_bN_cN):
 def foo_right(track, memory, va_a_len):
   a = va_a_len[0].eval()
   length = __foo_va_conv_n_lazy_int(va_a_len[1])
-  a_str = unistr(a)
+  a_str = text_type(a)
   a_len = len(a_str)
   if a_len == 0 or length >= a_len:
     return a
@@ -1010,7 +1010,7 @@ def foo_roman(track, memory, va_n):
 
 def foo_rot13(track, memory, va_a):
   a = va_a[0].eval()
-  rot = codecs.encode(unistr(a), 'rot_13')
+  rot = codecs.encode(text_type(a), 'rot_13')
   return EvaluatorAtom(rot, __foo_bool(a))
 
 def foo_shortest(track, memory, va_aN):
@@ -1018,15 +1018,15 @@ def foo_shortest(track, memory, va_aN):
   shortest_len = -1
   for each in va_aN:
     current = each.eval()
-    current_len = len(unistr(current))
+    current_len = len(text_type(current))
     if shortest_len == -1 or current_len < shortest_len:
       shortest = current
       shortest_len = current_len
   return shortest
 
 def foo_strchr(track, memory, va_s_c):
-  s = unistr(va_s_c[0].eval())
-  c = unistr(va_s_c[1].eval())
+  s = text_type(va_s_c[0].eval())
+  c = text_type(va_s_c[1].eval())
   if c:
     c = c[0]
     for i, char in enumerate(s):
@@ -1035,8 +1035,8 @@ def foo_strchr(track, memory, va_s_c):
   return EvaluatorAtom(0, False)
 
 def foo_strrchr(track, memory, va_s_c):
-  s = unistr(va_s_c[0].eval())
-  c = unistr(va_s_c[1].eval())
+  s = text_type(va_s_c[0].eval())
+  c = text_type(va_s_c[1].eval())
   if c:
     c = c[0]
     for i, char in itertools.izip(reversed(xrange(len(s))), reversed(s)):
@@ -1045,8 +1045,8 @@ def foo_strrchr(track, memory, va_s_c):
   return EvaluatorAtom(0, False)
 
 def foo_strstr(track, memory, va_s1_s2):
-  s1 = unistr(va_s1_s2[0].eval())
-  s2 = unistr(va_s1_s2[1].eval())
+  s1 = text_type(va_s1_s2[0].eval())
+  s2 = text_type(va_s1_s2[1].eval())
   found_index = 0
   if s1 and s2:
     found_index = s1.find(s2) + 1
@@ -1055,14 +1055,14 @@ def foo_strstr(track, memory, va_s1_s2):
 def foo_strcmp(track, memory, va_s1_s2):
   s1 = va_s1_s2[0].eval()
   s2 = va_s1_s2[1].eval()
-  if unistr(s1) == unistr(s2):
+  if text_type(s1) == text_type(s2):
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
 def foo_stricmp(track, memory, va_s1_s2):
   s1 = va_s1_s2[0].eval()
   s2 = va_s1_s2[1].eval()
-  if unistr(s1).lower() == unistr(s2).lower():
+  if text_type(s1).lower() == text_type(s2).lower():
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
@@ -1074,7 +1074,7 @@ def foo_substr(track, memory, va_s_m_n):
     return EvaluatorAtom('', __foo_bool(s))
   if m < 0:
     m = 0
-  s_str = unistr(s)
+  s_str = text_type(s)
   s_len = len(s_str)
   result = None
   if n > s_len:
@@ -1089,14 +1089,14 @@ def foo_substr(track, memory, va_s_m_n):
 
 def foo_strip_swap_prefix(va_x_prefixN, should_swap):
   x = va_x_prefixN[0].eval()
-  x_str = unistr(x)
+  x_str = text_type(x)
   x_str_lower = x_str.lower()
 
   for i in range(1, len(va_x_prefixN)):
     prefix = va_x_prefixN[i]
 
     try:
-      prefix = unistr(prefix.eval())
+      prefix = text_type(prefix.eval())
     except AttributeError:
       pass
 
@@ -1126,7 +1126,7 @@ def foo_swapprefix_arityN(track, memory, va_x_prefixN):
 
 def foo_trim(track, memory, va_s):
   s = va_s[0].eval()
-  return EvaluatorAtom(unistr(s).strip(), __foo_bool(s))
+  return EvaluatorAtom(text_type(s).strip(), __foo_bool(s))
 
 def foo_tab_arity0(track, memory, va):
   return '\t'
@@ -1139,13 +1139,13 @@ def foo_tab_arity1(track, memory, va_n):
 
 def foo_upper(track, memory, va_s):
   s = va_s[0].eval()
-  return EvaluatorAtom(unistr(s).upper(), __foo_bool(s))
+  return EvaluatorAtom(text_type(s).upper(), __foo_bool(s))
 
 def foo_meta_arity1(track, memory, va_name):
   return foo_meta_sep_arity2(track, memory, va_name + [', '])
 
 def foo_meta_arity2(track, memory, va_name_n):
-  name = unistr(va_name_n[0].eval())
+  name = text_type(va_name_n[0].eval())
   n = __foo_va_conv_n_lazy_int(va_name_n[1])
   if n < 0:
     return False
@@ -1163,11 +1163,11 @@ def foo_meta_arity2(track, memory, va_name_n):
   return EvaluatorAtom(value, True)
 
 def foo_meta_sep_arity2(track, memory, va_name_sep):
-  name = unistr(va_name_sep[0].eval())
+  name = text_type(va_name_sep[0].eval())
 
   sep = va_name_sep[1]
   try:
-    sep = unistr(sep.eval())
+    sep = text_type(sep.eval())
   except AttributeError:
     pass
 
@@ -1181,9 +1181,9 @@ def foo_meta_sep_arity2(track, memory, va_name_sep):
   return EvaluatorAtom(value, True)
 
 def foo_meta_sep_arity3(track, memory, va_name_sep_lastsep):
-  name = unistr(va_name_sep_lastsep[0].eval())
-  sep = unistr(va_name_sep_lastsep[1].eval())
-  lastsep = unistr(va_name_sep_lastsep[2].eval())
+  name = text_type(va_name_sep_lastsep[0].eval())
+  sep = text_type(va_name_sep_lastsep[1].eval())
+  lastsep = text_type(va_name_sep_lastsep[2].eval())
   value = track.get(name)
   if not value:
     value = track.get(name.upper())
@@ -1198,7 +1198,7 @@ def foo_meta_sep_arity3(track, memory, va_name_sep_lastsep):
 
 def foo_meta_test(track, memory, va_nameN):
   for each in va_nameN:
-    name = unistr(each.eval())
+    name = text_type(each.eval())
     value = track.get(name)
     if not value:
       value = track.get(name.upper())
@@ -1207,7 +1207,7 @@ def foo_meta_test(track, memory, va_nameN):
   return EvaluatorAtom(1, True)
 
 def foo_meta_num(track, memory, va_name):
-  name = unistr(va_name[0].eval())
+  name = text_type(va_name[0].eval())
   value = track.get(name)
   if not value:
     value = track.get(name.upper())
@@ -1219,7 +1219,7 @@ def foo_meta_num(track, memory, va_name):
 
 def foo_get(track, memory, va_name):
   name = va_name[0].eval()
-  name_str = unistr(name)
+  name_str = text_type(name)
   if name_str == '':
     return False
   value = memory.get(name_str)
@@ -1228,10 +1228,10 @@ def foo_get(track, memory, va_name):
   return False
 
 def foo_put(track, memory, va_name_value):
-  name = unistr(va_name_value[0].eval())
+  name = text_type(va_name_value[0].eval())
   value = va_name_value[1].eval()
   if name != '':
-    memory[name] = unistr(value)
+    memory[name] = text_type(value)
   return value
 
 def foo_puts(track, memory, va_name_value):
@@ -1393,13 +1393,13 @@ def vcallmarshal(atom):
   if atom is None:
     return ('', 0)
 
-  return (unistr(atom), 1 if atom else 0)
+  return (text_type(atom), 1 if atom else 0)
 
 def vcondmarshal(atom):
   if not atom:
     return ('', 0)
 
-  return (unistr(atom), 1)
+  return (text_type(atom), 1)
 
 def foobar_filename_escape(output):
   system = platform.system()
@@ -1524,7 +1524,7 @@ class TitleFormatter:
   def format(self, track, title_format):
     evaluated_value = self.eval(track, title_format)
     if evaluated_value is not None:
-      return unistr(evaluated_value)
+      return text_type(evaluated_value)
     return None
 
   def eval(self, track, title_format, conditional=False, depth=0, offset=0,
@@ -1826,7 +1826,7 @@ class TitleFormatter:
                   if self.debug:
                     dbg('value is: %s' % evaluated_value, depth)
                   if evaluated_value:
-                    output += unistr(evaluated_value)
+                    output += text_type(evaluated_value)
                     evaluation_count += 1
                   if self.debug:
                     dbg('evaluation count is now %s' % evaluation_count, depth)
@@ -1980,7 +1980,7 @@ class TitleFormatter:
     if self.debug:
       dbg('value is: %s' % evaluated_value, depth)
 
-    evaluated_value_str = unistr(evaluated_value)
+    evaluated_value_str = text_type(evaluated_value)
 
     if evaluated_value or evaluated_value == '':
       if evaluated_value is not True:
