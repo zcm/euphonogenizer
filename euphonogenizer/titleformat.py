@@ -19,7 +19,7 @@ import unicodedata
 
 from .common import dbg
 
-from six import text_type
+from six import binary_type, text_type
 
 
 @six.python_2_unicode_compatible
@@ -131,6 +131,9 @@ class EvaluatorAtom:
 
   def __str__(self):
     return text_type(self.string_value)
+
+  def __bytes__(self):
+    return binary_type(self.string_value, 'utf-8')
 
   def __nonzero__(self):
     return self.truth_value
@@ -661,7 +664,7 @@ def foo_char(track, memory, va_x):
 
 def foo_crc32(track, memory, va_x):
   x = va_x[0].eval()
-  crc = binascii.crc32(text_type(x))
+  crc = binascii.crc32(binary_type(x))
   return EvaluatorAtom(crc, __foo_bool(x))
 
 def foo_crlf(track, memory, va):
@@ -1276,7 +1279,7 @@ foo_function_vtable = {
     'caps2': {0: foo_false, 1: foo_caps2, 'n': foo_false},
     # TODO: Strict rules, etc. You get the idea.
     'char': {0: foo_false, 1: foo_char, 'n': foo_false},
-    'crc32': {1: foo_crc32},
+    'crc32': {0: foo_false, 1: foo_crc32, 'n': foo_false},
     'crlf': {0: foo_crlf},
     'cut': {2: foo_cut},
     'directory': {1: foo_directory_arity1, 2: foo_directory_arity2},

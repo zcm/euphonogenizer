@@ -630,6 +630,16 @@ test_eval_cases = [
       ('$char(asdf)', '', False, {}),
       ('$char(%totaltracks%)', '', False, cs_01),
       ('$char(a,b)', '', False, {}),
+      # $crc32
+      ('$crc32()', '', False, {}),
+      ('$crc32( )', '3916222277', False, {}),
+      ('$crc32(abc)', '891568578', False, {}),
+      ('$crc32(%totaltracks%)', '3596227959', True, cs_01),
+      ("$crc32('')", '1997036262', False, {}),
+      ('$crc32(a b c)', '3358461392', False, {}),
+      ('$crc32(1,%totaltracks%)', '', False, cs_01),
+      ("$crc32(G#1cW)$crc32('J]GAD')$crc32(in0W=)$crc32('eAe%Y')"
+          "$crc32(6Nc6p)$crc32('9]rkV')$crc32('7Rm[j')", '0234568', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
