@@ -1287,7 +1287,7 @@ foo_function_vtable = {
     'crlf': {0: foo_crlf},
     'cut': {2: foo_cut},
     'directory': {1: foo_directory_1, 2: foo_directory_2, 'n': foo_false},
-    'directory_path': {1: foo_directory_path},
+    'directory_path': {1: foo_directory_path, 'n': foo_false},
     'ext': {1: foo_ext},
     'filename': {1: foo_filename},
     'fix_eol': {1: foo_fix_eol_arity1, 2: foo_fix_eol_arity2},

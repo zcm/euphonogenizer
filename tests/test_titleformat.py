@@ -673,6 +673,15 @@ test_eval_cases = [
       ('$directory(C:\\My Documents\\Text Files\\file.txt, 4)', 'C', False, {}),
       ('$directory(C:\\My Documents\\Text Files\\file.txt, -1)', '', False, {}),
       ('$directory(a,b,c)', '', False, {}),
+      # $directory_path
+      ('$directory_path()', '', False, {}),
+      ("$directory_path('//')", '/', False, {}),
+      ('$directory_path(/usr/bin/vim)', '/usr/bin', False, {}),
+      ('$directory_path(C:\\My Documents\\Text Files\\file.txt)',
+          'C:\\My Documents\\Text Files', False, {}),
+      ('$directory_path(a|b|c)', 'a|b', False, {}),
+      ('$directory_path(a|%totaltracks%|c|d)', 'a|11|c', True, cs_01),
+      ('$directory_path(a,b)', '', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
