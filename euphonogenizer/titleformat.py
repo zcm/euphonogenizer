@@ -670,17 +670,19 @@ def foo_crc32(track, memory, va_x):
 def foo_crlf(track, memory, va):
   return '\r\n'
 
-def foo_cut(track, memory, va_a_len):
-  return foo_left(track, memory, va_a_len)
+# foo_cut is the same as foo_left; see definition for it below
 
-def foo_directory_arity1(track, memory, va_x):
+def foo_directory_1(track, memory, va_x):
   x = va_x[0].eval()
+  # RFC 8089 allows pipe characters to be used instead of the colons in the
+  # drive construct, and Foobar obeys this. For more information, see:
+  # https://tools.ietf.org/html/rfc8089#appendix-E.2.2
   parts = re.split('[\\\\/:|]', text_type(x))
   if len(parts) < 2:
     return EvaluatorAtom('', __foo_bool(x))
   return EvaluatorAtom(parts[-2], __foo_bool(x))
 
-def foo_directory_arity2(track, memory, va_x_n):
+def foo_directory_2(track, memory, va_x_n):
   x = va_x_n[0].eval()
   n = __foo_va_conv_n_lazy_int(va_x_n[1])
   if n <= 0:
@@ -784,6 +786,8 @@ def foo_left(track, memory, va_a_len):
   elif length == 0:
     return EvaluatorAtom('', __foo_bool(a))
   return EvaluatorAtom(a_str[0:length], __foo_bool(a))
+
+foo_cut = foo_left  # These are the same, so just alias for completeness
 
 def foo_len(track, memory, va_a):
   a = va_a[0].eval()
@@ -1282,7 +1286,7 @@ foo_function_vtable = {
     'crc32': {0: foo_false, 1: foo_crc32, 'n': foo_false},
     'crlf': {0: foo_crlf},
     'cut': {2: foo_cut},
-    'directory': {1: foo_directory_arity1, 2: foo_directory_arity2},
+    'directory': {1: foo_directory_1, 2: foo_directory_2, 'n': foo_false},
     'directory_path': {1: foo_directory_path},
     'ext': {1: foo_ext},
     'filename': {1: foo_filename},
