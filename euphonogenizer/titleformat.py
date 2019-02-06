@@ -728,21 +728,29 @@ def foo_filename(track, memory, va_x):
   return EvaluatorAtom(
       parts[-1].partition('?')[0].rsplit('.', 1)[0], __foo_bool(x))
 
-def foo_fix_eol_arity1(track, memory, va_x):
-  return foo_fix_eol_arity2(track, memory, va_x + [' (...)'])
+def foo_fix_eol_1(track, memory, va_x):
+  return foo_fix_eol(track, memory, va_x[0], ' (...)')
 
-def foo_fix_eol_arity2(track, memory, va_x_indicator):
-  x = va_x_indicator[0].eval()
-  indicator = va_x_indicator[1]
+def foo_fix_eol_2(track, memory, va_x_indicator):
+  return foo_fix_eol(track, memory, *va_x_indicator)
+
+def foo_fix_eol(track, memory, x, indicator):
+  try:
+    x = x.eval()
+  except AttributeError:
+    pass
 
   try:
     indicator = text_type(indicator.eval())
   except AttributeError:
     pass
 
-  result = text_type(x).split('\r\n')[0].split('\n')[0]
+  parts = re.split('[\r\n]', text_type(x), 1)
 
-  return EvaluatorAtom(result + indicator, __foo_bool(x))
+  if len(parts) > 1:
+    return EvaluatorAtom(parts[0] + indicator, __foo_bool(x))
+
+  return x
 
 def foo_hex_arity1(track, memory, va_n):
   return foo_hex_arity2(track, memory, [va_n[0], 0])
@@ -1286,7 +1294,7 @@ foo_function_vtable = {
     'directory_path': {1: foo_directory_path, 'n': foo_false},
     'ext': {1: foo_ext, 'n': foo_false},
     'filename': {1: foo_filename, 'n': foo_false},
-    'fix_eol': {1: foo_fix_eol_arity1, 2: foo_fix_eol_arity2},
+    'fix_eol': {1: foo_fix_eol_1, 2: foo_fix_eol_2, 'n': foo_false},
     'hex': {1: foo_hex_arity1, 2: foo_hex_arity2},
     'insert': {3: foo_insert},
     'left': {2: foo_left},

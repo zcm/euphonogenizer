@@ -770,6 +770,27 @@ test_eval_cases = [
       ('$filename(a%SLASH%b%SLASH%c)', 'c', True, fake),
       ('$filename(a%SLASH%b%SLASH%c%DOT%d)', 'c', True, fake),
       ('$filename(a,b)', '', False, {}),
+      # $fix_eol
+      ('$fix_eol()', '', False, {}),
+      ('$fix_eol(a)', 'a', False, {}),
+      ('$fix_eol(%totaltracks%)', '11', True, cs_01),
+      ('$fix_eol(cats$crlf()dogs)', 'cats (...)', False, {}),
+      ('$fix_eol(cats$crlf()%track%)', 'cats (...)', True, cs_01),
+      ('$fix_eol(%tracknumber%$crlf()dogs)', '01 (...)', True, cs_01),
+      ('$fix_eol(cats\ndogs)', 'cats (...)', False, {}), # Unix
+      ('$fix_eol(cats\r\ndogs)', 'cats (...)', False, {}), # DOS
+      ('$fix_eol(cats\rdogs)', 'cats (...)', False, {}), # Mac OS Classic
+      ('$fix_eol(cats$char(10)dogs)', 'cats (...)', False, {}), # Unix
+      ('$fix_eol(cats$char(13)$char(10)dogs)', 'cats (...)', False, {}), # DOS
+      ('$fix_eol(cats$char(13)dogs)', 'cats (...)', False, {}), # Mac OS Classic
+      ('$fix_eol(cats$char(30)dogs)', 'catsdogs', False, {}), # Old QNX
+      ('$fix_eol(cats\ndogs, meow)', 'cats meow', False, {}), # Unix
+      ('$fix_eol(cats\r\ndogs,meow)', 'catsmeow', False, {}), # DOS
+      ('$fix_eol(cats\rdogs, meow)', 'cats meow', False, {}), # Mac OS Classic
+      ('$fix_eol(cats\n%track%, meow)', 'cats meow', True, cs_01),
+      ('$fix_eol(%totaltracks%\ndogs, meow)', '11 meow', True, cs_01),
+      ('$fix_eol(cats\ndogs, %totaltracks%)', 'cats 11', False, cs_01),
+      ('$fix_eol(a$crlf()b,c,d)', '', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
