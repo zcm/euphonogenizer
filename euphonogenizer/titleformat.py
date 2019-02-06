@@ -723,15 +723,10 @@ def foo_filename(track, memory, va_x):
   except AttributeError:
     pass
 
-  x_str = text_type(x)
-  parts = re.split('[\\\\/:|]', x_str)
-  parts_len = len(parts)
-  if parts_len <= 0:
-    return EvaluatorAtom('', __foo_bool(x))
-  filename = x_str
-  if parts_len >= 2:
-    filename = parts[-1]
-  return EvaluatorAtom(filename[::-1].split('.', 1)[-1][::-1], __foo_bool(x))
+  parts = re.split('[\\\\/:|]', text_type(x))
+
+  return EvaluatorAtom(
+      parts[-1].partition('?')[0].rsplit('.', 1)[0], __foo_bool(x))
 
 def foo_fix_eol_arity1(track, memory, va_x):
   return foo_fix_eol_arity2(track, memory, va_x + [' (...)'])
@@ -1290,7 +1285,7 @@ foo_function_vtable = {
     'directory': {1: foo_directory_1, 2: foo_directory_2, 'n': foo_false},
     'directory_path': {1: foo_directory_path, 'n': foo_false},
     'ext': {1: foo_ext, 'n': foo_false},
-    'filename': {1: foo_filename},
+    'filename': {1: foo_filename, 'n': foo_false},
     'fix_eol': {1: foo_fix_eol_arity1, 2: foo_fix_eol_arity2},
     'hex': {1: foo_hex_arity1, 2: foo_hex_arity2},
     'insert': {3: foo_insert},

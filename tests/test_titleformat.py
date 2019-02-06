@@ -29,8 +29,10 @@ cs_01 = {
       "TRACKNUMBER" : "01"
 }
 
-fake_track = {
-    "FAKEDASH" : "-",
+fake = {
+    "DASH" : "-",
+    "DOT" : ".",
+    "SLASH" : "/",
 }
 
 window_title_integration_fmt = (
@@ -679,6 +681,12 @@ test_eval_cases = [
       ('$directory(.././../file.txt, 2)', '.', False, {}),
       ('$directory(.././../file.txt, 3)', '..', False, {}),
       ('$directory(.././../file.txt, 4)', '', False, {}),
+      ('$directory(%SLASH%%SLASH%)', '', True, fake),
+      ('$directory(a%SLASH%b%SLASH%c)', 'b', True, fake),
+      ('$directory(a%SLASH%b%SLASH%c%DOT%d)', 'b', True, fake),
+      ('$directory(%SLASH%%SLASH%, 2)', '', True, fake),
+      ('$directory(a%SLASH%b%SLASH%c, 2)', 'a', True, fake),
+      ('$directory(a%SLASH%b%SLASH%c%DOT%d, 2)', 'a', True, fake),
       ('$directory(a,b,c)', '', False, {}),
       # $directory_path
       ('$directory_path()', '', False, {}),
@@ -689,6 +697,9 @@ test_eval_cases = [
       ('$directory_path(.././../file.txt)', '.././..', False, {}),
       ('$directory_path(a|b|c)', 'a|b', False, {}),
       ('$directory_path(a|%totaltracks%|c|d)', 'a|11|c', True, cs_01),
+      ('$directory_path(%SLASH%%SLASH%)', '/', True, fake),
+      ('$directory_path(a%SLASH%b%SLASH%c)', 'a/b', True, fake),
+      ('$directory_path(a%SLASH%b%SLASH%c%DOT%d)', 'a/b', True, fake),
       ('$directory_path(a,b)', '', False, {}),
       # $ext
       ('$ext()', '', False, {}),
@@ -700,6 +711,7 @@ test_eval_cases = [
       ('$ext(abc.d:e)', '', False, {}),
       ('$ext(abc.d|e)', '', False, {}),
       ('$ext(abc.d\\e)', '', False, {}),
+      ('$ext(file.txt?a/b)', '', False, {}),
       ('$ext(%totaltracks%)', '', False, cs_01),  # Actual FB2k behavior
       ('$ext(a.%totaltracks%)', '11', True, cs_01),
       ('$ext(%totaltracks%.a)', 'a', True, cs_01),
@@ -708,7 +720,7 @@ test_eval_cases = [
       ('$ext(/usr/bin/vim)', '', False, {}),
       ('$ext(C:\\My Documents\\Text Files\\file.txt)', 'txt', False, {}),
       ('$ext(.././../file.txt)', 'txt', False, {}),
-      ('$ext(http://neopets.com/randomfriend.phtml?user=adam)',
+      ("$ext('http://neopets.com/randomfriend.phtml?user=adam')",
           'phtml', False, {}),
       ("$ext('%s?')" % test_url, 'html', False, {}),
       ("$ext('%s#target')" % test_url, 'html#target', False, {}),
@@ -717,7 +729,47 @@ test_eval_cases = [
       ("$ext('%s?file=test.txt')" % test_url, 'txt', False, {}),
       ("$ext('%s?f=a.txt&m=upload')" % test_url, 'txt&m=upload', False, {}),
       ("$ext('" + test_url + "?ab.bc?de??'%track%)", 'bc', True, cs_01),
+      ('$ext(%SLASH%%SLASH%)', '', False, fake),
+      ('$ext(a%SLASH%b%SLASH%c)', '', False, fake),
+      ('$ext(a%SLASH%b%SLASH%c%DOT%d)', 'd', True, fake),
       ('$ext(a,b)', '', False, {}),
+      # $filename
+      ('$filename()', '', False, {}),
+      ('$filename(a)', 'a', False, {}),
+      ('$filename(a.b)', 'a', False, {}),
+      ('$filename( before.after   )', ' before', False, {}),
+      ('$filename(example.com/test)', 'test', False, {}),
+      ('$filename(cat.tar.gz)', 'cat.tar', False, {}),
+      ('$filename(abc.d:e)', 'e', False, {}),
+      ('$filename(abc.d|e)', 'e', False, {}),
+      ('$filename(abc.d\\e)', 'e', False, {}),
+      ('$filename(file.txt?a/b)', 'b', False, {}),
+      ('$filename(%totaltracks%)', '11', True, cs_01),
+      ('$filename(a.%totaltracks%)', 'a', True, cs_01),
+      ('$filename(%totaltracks%.a)', '11', True, cs_01),
+      ('$filename(\\a|:b%totaltracks%/c.d\\e)', 'e', True, cs_01),
+      ('$filename(\\a|:b%totaltracks%/c.d\\e.a)', 'e', True, cs_01),
+      ('$filename(/usr/bin/vim)', 'vim', False, {}),
+      ('$filename(C:\\My Documents\\Text Files\\file.txt)', 'file', False, {}),
+      ('$filename(.././../file.txt)', 'file', False, {}),
+      ("$filename('http://neopets.com/randomfriend.phtml?user=adam')",
+          'randomfriend', False, {}),
+      ("$filename('%s?')" % test_url, '0,24330,3341900,00', False, {}),
+      ("$filename('%s#target')" % test_url, '0,24330,3341900,00', False, {}),
+      ("$filename('%s?param=value')" % test_url,
+          '0,24330,3341900,00', False, {}),
+      ("$filename('%s?p1=val1&p2=val2')" % test_url,
+          '0,24330,3341900,00', False, {}),
+      ("$filename('%s?file=test.txt')" % test_url,
+          '0,24330,3341900,00', False, {}),
+      ("$filename('%s?f=a.txt&m=upl')" % test_url,
+          '0,24330,3341900,00', False, {}),
+      ("$filename('" + test_url + "?ab.bc?de??'%track%)",
+          '0,24330,3341900,00', True, cs_01),
+      ('$filename(%SLASH%%SLASH%)', '', True, fake),
+      ('$filename(a%SLASH%b%SLASH%c)', 'c', True, fake),
+      ('$filename(a%SLASH%b%SLASH%c%DOT%d)', 'c', True, fake),
+      ('$filename(a,b)', '', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
