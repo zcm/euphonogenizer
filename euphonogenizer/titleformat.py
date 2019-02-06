@@ -708,11 +708,12 @@ def foo_ext(track, memory, va_x):
   except AttributeError:
     pass
 
-  ext = text_type(x).split('.')[-1]
-  for c in ext:
-    if c in '/\\|:':
-      return EvaluatorAtom('', __foo_bool(x))
-  return EvaluatorAtom(ext.split('?')[0], __foo_bool(x))
+  _, delimiter, ext = text_type(x).rpartition('.')
+
+  if not delimiter or any(c in '/\\|:' for c in ext):
+    return ''
+
+  return EvaluatorAtom(ext.partition('?')[0], __foo_bool(x))
 
 def foo_filename(track, memory, va_x):
   x = va_x[0]
@@ -1288,7 +1289,7 @@ foo_function_vtable = {
     'cut': {2: foo_cut},
     'directory': {1: foo_directory_1, 2: foo_directory_2, 'n': foo_false},
     'directory_path': {1: foo_directory_path, 'n': foo_false},
-    'ext': {1: foo_ext},
+    'ext': {1: foo_ext, 'n': foo_false},
     'filename': {1: foo_filename},
     'fix_eol': {1: foo_fix_eol_arity1, 2: foo_fix_eol_arity2},
     'hex': {1: foo_hex_arity1, 2: foo_hex_arity2},

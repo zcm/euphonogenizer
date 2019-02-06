@@ -61,6 +61,8 @@ window_title_integration_expected = (
     + ' (Deluxe Edition) (2015) {Disc 1 of 2}]'
 )
 
+test_url = 'www.techtv.com/screensavers/supergeek/story/0,24330,3341900,00.html'
+
 f = titleformat.TitleFormatter()
 fdbg = titleformat.TitleFormatter(debug=True)
 
@@ -672,6 +674,11 @@ test_eval_cases = [
       ('$directory(C:\\My Documents\\Text Files\\file.txt, 3)', '', False, {}),
       ('$directory(C:\\My Documents\\Text Files\\file.txt, 4)', 'C', False, {}),
       ('$directory(C:\\My Documents\\Text Files\\file.txt, -1)', '', False, {}),
+      ('$directory(.././../file.txt)', '..', False, {}),
+      ('$directory(.././../file.txt, 1)', '..', False, {}),
+      ('$directory(.././../file.txt, 2)', '.', False, {}),
+      ('$directory(.././../file.txt, 3)', '..', False, {}),
+      ('$directory(.././../file.txt, 4)', '', False, {}),
       ('$directory(a,b,c)', '', False, {}),
       # $directory_path
       ('$directory_path()', '', False, {}),
@@ -679,9 +686,38 @@ test_eval_cases = [
       ('$directory_path(/usr/bin/vim)', '/usr/bin', False, {}),
       ('$directory_path(C:\\My Documents\\Text Files\\file.txt)',
           'C:\\My Documents\\Text Files', False, {}),
+      ('$directory_path(.././../file.txt)', '.././..', False, {}),
       ('$directory_path(a|b|c)', 'a|b', False, {}),
       ('$directory_path(a|%totaltracks%|c|d)', 'a|11|c', True, cs_01),
       ('$directory_path(a,b)', '', False, {}),
+      # $ext
+      ('$ext()', '', False, {}),
+      ('$ext(a)', '', False, {}),
+      ('$ext(a.b)', 'b', False, {}),
+      ('$ext( before.after   )', 'after   ', False, {}),
+      ('$ext(example.com/test)', '', False, {}),
+      ('$ext(cat.tar.gz)', 'gz', False, {}),
+      ('$ext(abc.d:e)', '', False, {}),
+      ('$ext(abc.d|e)', '', False, {}),
+      ('$ext(abc.d\\e)', '', False, {}),
+      ('$ext(%totaltracks%)', '', False, cs_01),  # Actual FB2k behavior
+      ('$ext(a.%totaltracks%)', '11', True, cs_01),
+      ('$ext(%totaltracks%.a)', 'a', True, cs_01),
+      ('$ext(\\a|:b%totaltracks%/c.d\\e)', '', False, cs_01),
+      ('$ext(\\a|:b%totaltracks%/c.d\\e.a)', 'a', True, cs_01),
+      ('$ext(/usr/bin/vim)', '', False, {}),
+      ('$ext(C:\\My Documents\\Text Files\\file.txt)', 'txt', False, {}),
+      ('$ext(.././../file.txt)', 'txt', False, {}),
+      ('$ext(http://neopets.com/randomfriend.phtml?user=adam)',
+          'phtml', False, {}),
+      ("$ext('%s?')" % test_url, 'html', False, {}),
+      ("$ext('%s#target')" % test_url, 'html#target', False, {}),
+      ("$ext('%s?param=value')" % test_url, 'html', False, {}),
+      ("$ext('%s?p1=val1&p2=val2')" % test_url, 'html', False, {}),
+      ("$ext('%s?file=test.txt')" % test_url, 'txt', False, {}),
+      ("$ext('%s?f=a.txt&m=upload')" % test_url, 'txt&m=upload', False, {}),
+      ("$ext('" + test_url + "?ab.bc?de??'%track%)", 'bc', True, cs_01),
+      ('$ext(a,b)', '', False, {}),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
