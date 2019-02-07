@@ -752,25 +752,24 @@ def foo_fix_eol(track, memory, x, indicator):
 
   return x
 
-def foo_hex_arity1(track, memory, va_n):
-  return foo_hex_arity2(track, memory, [va_n[0], 0])
+def foo_hex_1(track, memory, va_n):
+  # While technically in the documentation, $hex(n) doesn't actually do anything
+  # as of foobar2000 1.4.2. This is probably a bug that no one has noticed. This
+  # documentation-based implementation is provided for non-compliant uses.
+  return foo_hex(track, memory, va_n[0])
 
-def foo_hex_arity2(track, memory, va_n_len):
-  n = __foo_va_conv_n_lazy_int(va_n_len[0])
-  length = __foo_va_conv_n_lazy_int(va_n_len[1])
-  if length < 0:
-    length = 0
-  value = None
-  if n < 0:
-    value = hex(((abs(n) ^ 0xFFFFFFFF) + 1) & 0xFFFFFFFF)
-  elif n > 2**63-1:
-    value = '0xFFFFFFFF'
-  else:
-    value = hex(n)
-  hex_value = value.split('L')[0][2:]
-  if len(hex_value) > 8:
-    hex_value = hex_value[-8:]
-  return hex_value.upper().zfill(length)
+def foo_hex_2(track, memory, va_n_len):
+  return foo_hex(track, memory, *va_n_len)
+
+def foo_hex(track, memory, n, length=0):
+  n = __foo_va_conv_n_lazy(n)
+  length = __foo_va_conv_n_lazy_int(length)
+
+  n.string_value = hex(
+      max(-0x8000000000000000, min(__foo_int(n), 0x7FFFFFFFFFFFFFFF)
+        ) % 0x100000000)[2:].upper().zfill(max(0, min(length, 32)))
+
+  return n
 
 def foo_insert(track, memory, va_a_b_n):
   a = va_a_b_n[0].eval()
@@ -1295,7 +1294,8 @@ foo_function_vtable = {
     'ext': {1: foo_ext, 'n': foo_false},
     'filename': {1: foo_filename, 'n': foo_false},
     'fix_eol': {1: foo_fix_eol_1, 2: foo_fix_eol_2, 'n': foo_false},
-    'hex': {1: foo_hex_arity1, 2: foo_hex_arity2},
+    # NOTE: $hex 1 should be foo_hex_1, but foobar2000 actually does nothing
+    'hex': {2: foo_hex_2, 'n': foo_false},
     'insert': {3: foo_insert},
     'left': {2: foo_left},
     'len': {1: foo_len},
