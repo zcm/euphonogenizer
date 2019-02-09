@@ -785,13 +785,11 @@ def foo_insert(track, memory, va_a_b_n):
 def foo_left(track, memory, va_a_len):
   a = va_a_len[0].eval()
   length = __foo_va_conv_n_lazy_int(va_a_len[1])
-  a_str = text_type(a)
-  a_len = len(a_str)
-  if length < 0 or a_len == 0 or length >= a_len:
-    return a
-  elif length == 0:
-    return EvaluatorAtom('', __foo_bool(a))
-  return EvaluatorAtom(a_str[0:length], __foo_bool(a))
+
+  if length >= 0:
+    a.string_value = a.string_value[0:length]
+
+  return a
 
 foo_cut = foo_left  # These are the same, so just alias for completeness
 
@@ -1300,7 +1298,7 @@ foo_function_vtable = {
     # NOTE: $hex 1 should be foo_hex_1, but foobar2000 actually does nothing
     'hex': {2: foo_hex_2, 'n': foo_false},
     'insert': {3: foo_insert, 'n': foo_false},
-    'left': {2: foo_left},
+    'left': {2: foo_left, 'n': foo_false},
     'len': {1: foo_len},
     'len2': {1: foo_len2},
     'longer': {2: foo_longer},
