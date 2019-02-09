@@ -1485,17 +1485,27 @@ class CurriedCompilation:
     return 'curriedcomp(%s)' % repr(self.lazycomp)
 
 
+def noplog(fmt, *args, **kwargs):
+  pass
+
+def dbglog(fmt, *args, **kwargs):
+  try:
+    dbg(fmt(), **kwargs)
+  except TypeError:
+    dbg(fmt % args, **kwargs)
+
+
 class LazyCompilation:
   def __init__(self,
       formatter, expression, conditional, depth, offset, track_memory,
-      debug=False):
+      log=noplog):
     self.formatter = formatter
     self.current = expression
     self.conditional = conditional
     self.depth = depth
     self.offset = offset
     self.memory = track_memory
-    self.debug = debug
+    self.log = log
     self.codeblock = None
 
   def curry(self, track):
@@ -1503,8 +1513,7 @@ class LazyCompilation:
 
   def eval(self, track):
     if self.codeblock is None:
-      if self.debug:
-        dbg('lazily compiling block: %s' % self.current, self.depth)
+      self.log('lazily compiling block: %s', self.current, depth=self.depth)
       self.codeblock = self.formatter.eval(
           None, self.current, self.conditional, self.depth, self.offset,
           self.memory, True)
@@ -1519,6 +1528,7 @@ class LazyCompilation:
   def __repr__(self):
     return 'lazycomp(cb=%s, %s)' % (repr(self.codeblock), repr(self.current))
 
+
 class TitleFormatParseException(Exception):
   pass
 
@@ -1526,12 +1536,12 @@ class TitleFormatParseException(Exception):
 class TitleFormatter:
   def __init__(
       self, case_sensitive=False, magic=True, for_filename=False,
-      compatible=True, debug=False):
+      compatible=True, log=noplog):
     self.case_sensitive = case_sensitive
     self.magic = magic
     self.for_filename = for_filename
     self.compatible = compatible
-    self.debug = debug
+    self.log = log
 
   def format(self, track, title_format):
     evaluated_value = self.eval(track, title_format)
@@ -1566,9 +1576,8 @@ class TitleFormatter:
 
     compiled = []
 
-    if self.debug:
-      dbg('fresh call to eval(); format="%s" offset=%s' % (
-        title_format, offset), depth)
+    self.log('fresh call to eval(); format="%s" offset=%s',
+        title_format, offset, depth=depth)
 
     for i, c in enumerate(title_format):
       if outputting:
@@ -1579,21 +1588,18 @@ class TitleFormatter:
           literal_count += chars_parsed
         else:
           if c == "'":
-            if self.debug:
-              dbg('entering literal mode at char %s' % i, depth)
+            self.log('entering literal mode at char %s', i, depth=depth)
             literal = True
             literal_count = 0
           elif c == '%':
-            if self.debug:
-              dbg('begin parsing variable at char %s' % i, depth)
+            self.log('begin parsing variable at char %s', i, depth=depth)
             if parsing_variable or parsing_function or parsing_conditional:
               raise TitleFormatParseException(
                   "Something went horribly wrong while parsing token '%'")
             outputting = False
             parsing_variable = True
           elif c == '$':
-            if self.debug:
-              dbg('begin parsing function at char %s' % i, depth)
+            self.log('begin parsing function at char %s', i, depth=depth)
             if parsing_variable or parsing_function or parsing_conditional:
               raise TitleFormatParseException(
                   "Something went horribly wrong while parsing token '$'")
@@ -1601,8 +1607,7 @@ class TitleFormatter:
             parsing_function = True
             fn_offset_start = i + 1
           elif c == '[':
-            if self.debug:
-              dbg('begin parsing conditional at char %s' % i, depth)
+            self.log('begin parsing conditional at char %s', i, depth=depth)
             if parsing_variable or parsing_function or parsing_conditional:
               raise TitleFormatParseException(
                   "Something went horribly wrong while parsing token '['")
@@ -1612,10 +1617,11 @@ class TitleFormatter:
           elif c == ']':
             message = self.make_backwards_error(']', '[', offset, i)
             if self.compatible:
-              if self.debug:
-                dbg(self.make_noncompatible_dbg_msg(message), depth)
+              self.log(lambda: self.make_noncompatible_dbg_msg(message),
+                  depth=depth)
             else:
-              raise TitleFormatParseException(message)
+              raise TitleFormatParseException(
+                  self.make_noncompatible_dbg_msg(message))
           elif (c == '(' or c == ')') and self.compatible:
             # This seems like a foobar bug; parens shouldn't do anything outside
             # of a function call, but foobar will just explode if it sees a lone
@@ -1641,14 +1647,15 @@ class TitleFormatter:
               val, edelta = self.handle_var_resolution(track, current, i, depth)
               output += val
               evaluation_count += edelta
-              if self.debug:
-                dbg('evaluation count is now %s' % evaluation_count, depth)
+              self.log(
+                  'evaluation count is now %s', evaluation_count, depth=depth)
 
             current = ''
             outputting = True
             parsing_variable = False
           elif not self.is_valid_var_identifier(c):
-            dbg('probably an invalid character: %s at char %i' % (c, i), depth)
+            self.log('possible invalid character: %s at char %i', c, i,
+                depth=depth)
             # Only record the first instance.
             if bad_var_char is None:
               bad_var_char = (c, offset + i)
@@ -1661,8 +1668,7 @@ class TitleFormatter:
             raise TitleFormatParseException(
                 'Invalid parse state: Cannot parse names while in literal mode')
           if c == '(':
-            if self.debug:
-              dbg('parsed function "%s" at char %s' % (current, i), depth)
+            self.log('parsed function "%s" at char %s', current, i, depth=depth)
 
             current_fn = current
             current = ''
@@ -1673,8 +1679,8 @@ class TitleFormatter:
             message = self.make_backwards_error(')', '(', offset, i)
             raise TitleFormatParseException(message)
           elif c == '$' and lookbehind == '$':
-            if self.debug:
-              dbg('output of single $ due to lookbehind at char %s' % i, depth)
+            self.log('output single $ due to lookbehind at char %s', i,
+                depth=depth)
             output += c
             outputting = True
             parsing_function = False
@@ -1694,27 +1700,24 @@ class TitleFormatter:
               literal_count += chars_parsed
             else:
               if paren_poisoned:
-                if self.debug:
-                  dbg('checking poison state at char %s' % i, depth)
+                self.log('checking poison state at char %s', i, depth=depth)
                 if c == '(':
                   argparen_count += 1
-                  if self.debug:
-                    dbg('paren poisoning count now %s at char %s' % (
-                      argparen_count, i), depth)
+                  self.log('paren poisoning count now %s at char %s',
+                      argparen_count, i, depth=depth)
                   continue
                 if argparen_count == 0:
                   if c == ',' or c == ')':
-                    if self.debug:
-                      dbg('stopped paren poisoning at char %s' % i, depth)
+                    self.log('stopped paren poisoning at char %s', i,
+                        depth=depth)
                     # Resume normal execution and fall through; don't continue.
                     paren_poisoned = False
                   else:
                     continue
                 elif c == ')':
                   argparen_count -= 1
-                  if self.debug:
-                    dbg('paren poisoning count now %s at char %s' % (
-                      argparen_count, i), depth)
+                  self.log('paren poisoning count now %s at char %s',
+                      argparen_count, i, depth=depth)
                   continue
                 else:
                   continue
@@ -1725,8 +1728,8 @@ class TitleFormatter:
                       compiling)
                   current_argv.append(arg)
 
-                if self.debug:
-                  dbg('finished parsing function arglist at char %s' % i, depth)
+                self.log('finished parsing function arglist at char %s', i,
+                    depth=depth)
 
                 if compiling:
                   compiled.append(self.compile_fn_call(
@@ -1741,8 +1744,8 @@ class TitleFormatter:
 
                   evaluation_count += edelta
 
-                  if self.debug:
-                    dbg('evaluation count is now %s' % evaluation_count, depth)
+                  self.log('evaluation count is now %s', evaluation_count,
+                      depth=depth)
 
                 current_argv = []
                 outputting = True
@@ -1753,15 +1756,15 @@ class TitleFormatter:
               elif c == '(':
                 argparen_count += 1
                 if self.compatible:
-                  if self.debug:
-                    dbg('detected paren poisoning at char %s' % i, depth)
+                  self.log('detected paren poisoning at char %s', i,
+                      depth=depth)
                   paren_poisoned = True
                   continue
                 else:
                   current += c
               elif c == "'":
-                if self.debug:
-                  dbg('entering arglist literal mode at char %s' % i, depth)
+                self.log('entering arglist literal mode at char %s', i,
+                    depth=depth)
                 literal = True
                 literal_count = 0
                 # Include the quotes because we reparse function arguments.
@@ -1773,9 +1776,8 @@ class TitleFormatter:
                 current_argv.append(arg)
                 offset_start = i + 1
               elif c == '$':
-                if self.debug:
-                  dbg('stopped evaluation for function in arg at char %s' % i,
-                      depth)
+                self.log('stopped evaluation for function in arg at char %s', i,
+                      depth=depth)
                 current += c
                 parsing_function_recursive = True
                 recursive_lparen_count = 0
@@ -1790,8 +1792,7 @@ class TitleFormatter:
               recursive_rparen_count += 1
               if recursive_lparen_count == recursive_rparen_count:
                 # Stop skipping evaluation.
-                if self.debug:
-                  dbg('resumed evaluation at char %s' % i, depth)
+                self.log('resumed evaluation at char %s', i, depth=depth)
                 parsing_function_recursive = False
               elif recursive_lparen_count < recursive_rparen_count:
                 message = self.make_backwards_error(')', '(', offset, i)
@@ -1800,30 +1801,27 @@ class TitleFormatter:
           if literal:
             current += c
             if c == "'":
-              if self.debug:
-                dbg('leaving conditional literal mode at char %s' % i, depth)
+              self.log('leaving conditional literal mode at char %s', i,
+                  depth=depth)
               literal = False
           else:
             if c == '[':
-              if self.debug:
-                dbg('found a pending conditional at char %s' % i, depth)
+              self.log('found a pending conditional at char %s', i, depth=depth)
               conditional_parse_count += 1
-              if self.debug:
-                dbg('conditional parse count now %s' % conditional_parse_count,
-                    depth)
+              self.log('conditional parse count now %s',
+                  conditional_parse_count, depth=depth)
               current += c
             elif c == ']':
               if conditional_parse_count > 0:
-                if self.debug:
-                  dbg('found a terminating conditional at char %s' % i, depth)
+                self.log('found a terminating conditional at char %s', i,
+                    depth=depth)
                 conditional_parse_count -= 1
-                if self.debug:
-                  dbg('conditional parse count now %s at char %s' % (
-                    conditional_parse_count, i), depth)
+                self.log('conditional parse count now %s at char %s',
+                    conditional_parse_count, i, depth=depth)
                 current += c
               else:
-                if self.debug:
-                  dbg('finished parsing conditional at char %s' % i, depth)
+                self.log('finished parsing conditional at char %s', i,
+                    depth=depth)
 
                 if compiling:
                   compiled_cond = self.eval(
@@ -1835,21 +1833,20 @@ class TitleFormatter:
                       track, current, True, depth + 1, offset + offset_start,
                       memory)
 
-                  if self.debug:
-                    dbg('value is: %s' % evaluated_value, depth)
+                  self.log('value is: %s', evaluated_value, depth=depth)
                   if evaluated_value:
                     output += text_type(evaluated_value)
                     evaluation_count += 1
-                  if self.debug:
-                    dbg('evaluation count is now %s' % evaluation_count, depth)
+                  self.log('evaluation count is now %s', evaluation_count,
+                      depth=depth)
 
                 current = ''
                 conditional_parse_count = 0
                 outputting = True
                 parsing_conditional = False
             elif c == "'":
-              if self.debug:
-                dbg('entering conditional literal mode at char %s' % i, depth)
+              self.log('entering conditional literal mode at char %s', i,
+                  depth=depth)
               current += c
               literal = True
             else:
@@ -1883,8 +1880,7 @@ class TitleFormatter:
 
     if message is not None:
       if self.compatible:
-        if self.debug:
-          dbg(self.make_noncompatible_dbg_msg(message), depth)
+        self.log(lambda: self.make_noncompatible_dbg_msg(message), depth=depth)
       else:
         raise TitleFormatParseException(message)
 
@@ -1893,14 +1889,13 @@ class TitleFormatter:
         # We need to flush the output buffer to a lambda once more
         compiled.append(lambda t, output=output: (output, 0))
         output = ''
-      if self.debug:
-        dbg('eval() compiled the input into %s blocks' % len(compiled), depth)
+      self.log('eval() compiled the input into %s blocks', len(compiled),
+          depth=depth)
       return (lambda t, self=self, compiled=compiled, depth=depth:
         self.invoke_jit_eval(compiled, depth, t))
 
     if conditional and evaluation_count == 0:
-      if self.debug:
-        dbg('about to return nothing for output: %s' % output, depth)
+      self.log('about to return nothing for output: %s', output, depth=depth)
       return None
 
     if depth == 0 and self.for_filename:
@@ -1908,8 +1903,7 @@ class TitleFormatter:
 
     result = EvaluatorAtom(output, False if evaluation_count == 0 else True)
 
-    if self.debug:
-      dbg('eval() is returning: ' + repr(result), depth)
+    self.log(lambda: 'eval() is returning: ' + repr(result), depth=depth)
 
     return result
 
@@ -1929,7 +1923,7 @@ class TitleFormatter:
 
   def make_noncompatible_dbg_msg(self, message):
     return ('A non-compatible formatter would have raised an exception with'
-        + ' the message "' + message + '"')
+        ' the message "%s"' % message)
 
   def make_backwards_error(self, right, left_expected, offset, i):
     message = "Encountered '%s' with no matching '%s'" % (right, left_expected)
@@ -1954,13 +1948,12 @@ class TitleFormatter:
 
     if c == "'":
       if lookbehind == "'" and literal_count == 0:
-        if self.debug:
-          dbg('output of single quote due to lookbehind at char %s' % i, depth)
+        self.log('output of single quote due to lookbehind at char %s', i,
+            depth=depth)
         next_output += c
       elif include_quote:
         next_output += c
-      if self.debug:
-        dbg('leaving literal mode at char %s' % i, depth)
+      self.log('leaving literal mode at char %s', i, depth=depth)
       next_literal_state = False
     else:
       next_output += c
@@ -1972,13 +1965,12 @@ class TitleFormatter:
       depth=0, offset=0, memory={}, compiling=False):
     next_current = ''
 
-    if self.debug:
-      dbg('finished argument %s for function "%s" at char %s' % (
-          len(current_argv), current_fn, i), depth)
+    self.log('finished argument %s for function "%s" at char %s',
+        len(current_argv), current_fn, i, depth=depth)
 
     if compiling:
-      lazy = LazyCompilation(self, current, False, depth + 1, offset, memory,
-          self.debug)
+      lazy = LazyCompilation(
+          self, current, False, depth + 1, offset, memory, self.log)
       return (next_current, lazy)
 
     # The lazy expression will parse the current buffer if it's ever needed.
@@ -1989,8 +1981,7 @@ class TitleFormatter:
   def handle_var_resolution(self, track, field, i, depth):
     evaluated_value = self.resolve_variable(track, field, i, depth)
 
-    if self.debug:
-      dbg('value is: %s' % evaluated_value, depth)
+    self.log('value is: %s', evaluated_value, depth=depth)
 
     evaluated_value_str = text_type(evaluated_value)
 
@@ -2007,15 +1998,13 @@ class TitleFormatter:
 
   def resolve_variable(self, track, field, i, depth):
     if field == '':
-      if self.debug:
-        dbg('output of single percent at char %s' % i, depth)
+      self.log('output of single percent at char %s', i, depth=depth)
       return EvaluatorAtom('%', False)
 
     local_field = field
     if not self.case_sensitive:
       local_field = field.upper()
-    if self.debug:
-      dbg('parsed variable %s at char %s' % (local_field, i), depth)
+    self.log('parsed variable %s at char %s', local_field, i, depth=depth)
 
     resolved = None
 
@@ -2034,43 +2023,38 @@ class TitleFormatter:
 
   def magic_resolve_variable(self, track, field, depth):
     field_lower = field.lower()
-    if self.debug:
-      dbg('checking %s for magic mappings' % field_lower, depth)
+    self.log('checking %s for magic mappings', field_lower, depth=depth)
     if field_lower in magic_mappings:
       mapping = magic_mappings[field_lower]
       if not mapping:
-        dbg('mapping "%s" is not valid' % field_lower, depth)
+        self.log('mapping "%s" is not valid', field_lower, depth=depth)
         return track.get(field)
       else:
         # First try to call it -- the mapping can be a function.
         try:
           magically_resolved = mapping(self, track)
-          if self.debug:
-            dbg('mapped %s via function mapping' % field_lower, depth)
+          self.log('mapped %s via function mapping', field_lower, depth=depth)
           return magically_resolved
         except TypeError:
           # That didn't work. It's a list.
-          if self.debug:
-            dbg('mapping "%s" is not a function' % field_lower, depth)
+          self.log('mapping "%s" is not a function', field_lower, depth=depth)
           for each in mapping:
-            if self.debug:
-              dbg('attempting to map "%s"' % each, depth)
+            self.log('attempting to map "%s"', each, depth=depth)
             if each in track:
               return track.get(each)
             if self.case_sensitive:
               each_lower = each.lower()
-              if self.debug:
-                dbg('attempting to map "%s"' % each_lower, depth)
+              self.log('attempting to map "%s"', each_lower, depth=depth)
               if each_lower in track:
                 return track.get(each_lower)
 
           # Still couldn't find it.
-          if self.debug:
-            dbg('mapping %s failed to map magic variable' % field_lower, depth)
+          self.log('mapping %s failed to map magic variable', field_lower,
+              depth=depth)
           return track.get(field)
 
-    if self.debug:
-      dbg('mapping %s not found in magic variables' % field_lower, depth)
+    self.log('mapping %s not found in magic variables', field_lower,
+        depth=depth)
     return track.get(field)
 
   def compile_fn_call(
@@ -2085,17 +2069,15 @@ class TitleFormatter:
     fn_result = self.invoke_function(
         track, current_fn, current_argv, depth, offset)
 
-    if self.debug:
-      dbg('finished invoking function %s, value: %s' % (
-          current_fn, repr(fn_result)), depth)
+    self.log('finished invoking function %s, value: %s',
+        current_fn, repr(fn_result), depth=depth)
 
     return vcallmarshal(fn_result)
 
   def invoke_function(
       self, track, function_name, function_argv, depth=0, offset=0, memory={}):
-    if self.debug:
-      dbg('invoking function %s, args %s' % (
-          function_name, function_argv), depth)
+    self.log('invoking function %s, args %s', function_name, function_argv,
+        depth=depth)
     curried_argv = [
         x.curry(track) if hasattr(x, 'curry') else x
         for x in function_argv]

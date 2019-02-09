@@ -66,7 +66,6 @@ window_title_integration_expected = (
 test_url = 'www.techtv.com/screensavers/supergeek/story/0,24330,3341900,00.html'
 
 f = titleformat.TitleFormatter()
-fdbg = titleformat.TitleFormatter(debug=True)
 
 def _tcid(prefix, testcase):
   suffix = '' if len(testcase) <= 4 or not testcase[4] else ':' + testcase[4]
@@ -1247,30 +1246,19 @@ class TestTitleFormatter:
   @pytest.mark.parametrize('fmt,expected,expected_truth,track', test_eval_cases)
   def test_eval(self, fmt, expected, expected_truth, compiled, track):
     if compiled:
-      print("[TEST] Compiling titleformat...")
-      fn = fdbg.eval(None, fmt, compiling=True)
-      print("[TEST] Calling resulting function...")
+      fn = f.eval(None, fmt, compiling=True)
       result = fn(track)
     else:
-      result = fdbg.eval(track, fmt)
+      result = f.eval(track, fmt)
 
     assert result.string_value == expected
     assert result.truth_value is expected_truth
-
-    if compiled:
-      fn = f.eval(None, fmt, compiling=True)
-      quiet_result = fn(track)
-    else:
-      quiet_result = f.eval(track, fmt)
-
-    assert quiet_result.string_value == expected
-    assert quiet_result.truth_value is expected_truth
 
   @pytest.mark.parametrize('block', encoding_tests.keys())
   def test_eval_ansi_encoding(self, block):
     unicode_input, expected_ansi, _ = encoding_tests[block]
 
-    result_ansi = fdbg.eval(None, "$ansi('%s')" % unicode_input)
+    result_ansi = f.eval(None, "$ansi('%s')" % unicode_input)
 
     assert result_ansi.string_value == expected_ansi
     assert not result_ansi.truth_value
@@ -1279,7 +1267,7 @@ class TestTitleFormatter:
   def test_eval_ascii_encoding(self, block):
     unicode_input, _, expected_ascii = encoding_tests[block]
 
-    result_ascii = fdbg.eval(None, "$ascii('%s')" % unicode_input)
+    result_ascii = f.eval(None, "$ascii('%s')" % unicode_input)
 
     assert result_ascii.string_value == expected_ascii
     assert not result_ascii.truth_value
