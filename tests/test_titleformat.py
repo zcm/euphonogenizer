@@ -822,6 +822,24 @@ test_eval_cases = [
       ('$hex(%totaltracks%,012)', '00000000000B', True, cs_01),
       ('$hex(0,1,2)', '', False, {}),
     ),
+    *_testcasegroup('strings',  # Due to Python limit of 255 arguments
+      # $insert
+      ('$insert()', '', False, {}),
+      ('$insert(a)', '', False, {}),
+      ('$insert(a,b)', '', False, {}),
+      ('$insert(a,b,)', 'ba', False, {}),
+      ('$insert(a,b,1)', 'ab', False, {}),
+      ('$insert(a,b,-1)', 'ab', False, {}),
+      ('$insert(abc,de,)', 'deabc', False, {}),
+      ('$insert(abc,de,-1)', 'abcde', False, {}),
+      ('$insert(abc,de,1)', 'adebc', False, {}),
+      ('$insert(abc,de,2)', 'abdec', False, {}),
+      ('$insert(abc,de,3)', 'abcde', False, {}),
+      ('$insert(abc,de,4)', 'abcde', False, {}),
+      ('$insert(%title%,CATS,2)', 'ThCATSis', True, cs_01),
+      ('$insert(CATS,%title%,%track%)', 'CThisATS', False, cs_01),
+      ('$insert(a,b,2,c)', '', False, {}),
+    ),
     # Real-world use-cases; integration tests
     pytest.param(
         window_title_integration_fmt, window_title_integration_expected, True,

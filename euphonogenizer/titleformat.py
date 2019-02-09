@@ -773,11 +773,14 @@ def foo_hex(track, memory, n, length=0):
 
 def foo_insert(track, memory, va_a_b_n):
   a = va_a_b_n[0].eval()
-  a_str = text_type(a)
-  b = va_a_b_n[1].eval()
-  b_str = text_type(b)
+  b = text_type(va_a_b_n[1].eval())
   n = __foo_va_conv_n_lazy_int(va_a_b_n[2])
-  return EvaluatorAtom(a_str[0:n] + b_str + a_str[n:], __foo_bool(a))
+
+  if n < 0:
+    a.string_value += b
+  else:
+    a.string_value = a.string_value[0:n] + b + a.string_value[n:]
+  return a
 
 def foo_left(track, memory, va_a_len):
   a = va_a_len[0].eval()
@@ -1296,7 +1299,7 @@ foo_function_vtable = {
     'fix_eol': {1: foo_fix_eol_1, 2: foo_fix_eol_2, 'n': foo_false},
     # NOTE: $hex 1 should be foo_hex_1, but foobar2000 actually does nothing
     'hex': {2: foo_hex_2, 'n': foo_false},
-    'insert': {3: foo_insert},
+    'insert': {3: foo_insert, 'n': foo_false},
     'left': {2: foo_left},
     'len': {1: foo_len},
     'len2': {1: foo_len2},
