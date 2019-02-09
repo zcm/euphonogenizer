@@ -857,6 +857,15 @@ test_eval_cases = [
       ('$left(asdf,%track%)', 'a', False, cs_01),
       ('$left(%title%,2,c)', '', False, cs_01),
     ),
+    *_testcasegroup('strings',
+      ('$len()', '', False, cs_01),
+      ('$len(a)', '1', False, cs_01),
+      ('$len(0)', '1', False, cs_01),
+      ('$len(asdf)', '4', False, cs_01),
+      ('$len(12345)', '5', False, cs_01),
+      ('$len(%title%)', '4', True, cs_01),
+      ('$len(%track%,0)', '', False, cs_01),
+    ),
     # Real-world use-cases; integration tests
     pytest.param(
         window_title_integration_fmt, window_title_integration_expected, True,

@@ -1299,7 +1299,7 @@ foo_function_vtable = {
     'hex': {2: foo_hex_2, 'n': foo_false},
     'insert': {3: foo_insert, 'n': foo_false},
     'left': {2: foo_left, 'n': foo_false},
-    'len': {1: foo_len},
+    'len': {1: foo_len, 'n': foo_false},
     'len2': {1: foo_len2},
     'longer': {2: foo_longer},
     'lower': {1: foo_lower},
