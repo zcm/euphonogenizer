@@ -1594,9 +1594,39 @@ class TitleFormatter:
           buf, i, literal = self.literal(title_format, i, length, depth)
           output += buf
         elif c == '%':
+          if i < length and title_format[i] == '%':
+            output += '%'
+            i += 1
+            continue
+          if compiling and output:
+            compiled.append(lambda t, output=output: (output, 0))
+            output = ''
           self.log('begin parsing variable at char %s', i, depth=depth)
           outputting = False
           parsing_variable = True
+          while i < length:
+            c = title_format[i]
+            i += 1
+            if c != '%':
+              current += c
+            else:
+              if compiling:
+                compiled.append(
+                    lambda t, self=self, current=current, i=i, depth=depth:
+                      self.handle_var_resolution(t, current, i, depth))
+              else:
+                val, edelta = self.handle_var_resolution(
+                    track, current, i, depth)
+                output += val
+                evaluation_count += edelta
+                self.log(
+                    'evaluation count is now %s', evaluation_count, depth=depth)
+
+              current = ''
+              outputting = True
+              parsing_variable = False
+              break
+          continue
         elif c == '$':
           if i < length and title_format[i] == '$':
             output += '$'
@@ -1648,38 +1678,12 @@ class TitleFormatter:
           break
         else:
           output += c
-        if compiling and not outputting and len(output) > 0:
+        if compiling and not outputting and output:
           # This is a state transition; flush buffers to compiled lambda units
           compiled.append(lambda t, output=output: (output, 0))
           output = ''
       else:
-        if parsing_variable:
-          if c == '%':
-            if compiling:
-              compiled.append(
-                  lambda t, self=self, current=current, i=i, depth=depth:
-                    self.handle_var_resolution(t, current, i, depth))
-            else:
-              val, edelta = self.handle_var_resolution(track, current, i, depth)
-              output += val
-              evaluation_count += edelta
-              self.log(
-                  'evaluation count is now %s', evaluation_count, depth=depth)
-
-            current = ''
-            outputting = True
-            parsing_variable = False
-          elif not self.is_valid_var_identifier(c):
-            self.log('possible invalid character: %s at char %i', c, i,
-                depth=depth)
-            # Only record the first instance.
-            if bad_var_char is None:
-              bad_var_char = (c, offset + i)
-
-            current += c
-          else:
-            current += c
-        elif parsing_function_args:
+        if parsing_function_args:
           if not parsing_function_recursive:
             if paren_poisoned:
               self.log('checking poison state at char %s', i, depth=depth)
@@ -1902,10 +1906,9 @@ class TitleFormatter:
       output += c_output
       evaluation_count += c_count
 
-    return EvaluatorAtom(output, evaluation_count != 0)
+    self.log('JIT evaluation complete, output: %s', output, depth=depth)
 
-  def is_valid_var_identifier(self, c):
-    return c == ' ' or c == '@' or c == '_' or c == '-' or c.isalnum()
+    return EvaluatorAtom(output, evaluation_count != 0)
 
   def make_noncompatible_dbg_msg(self, message):
     return ('A non-compatible formatter would have raised an exception with'
@@ -1974,8 +1977,8 @@ class TitleFormatter:
       depth=0, offset=0, memory={}, compiling=False):
     next_current = ''
 
-    self.log('finished argument %s for function "%s" at char %s',
-        len(current_argv), current_fn, i, depth=depth)
+    self.log('finished argument %s for function "%s" at char %s: %s',
+        len(current_argv), current_fn, i, current, depth=depth)
 
     if compiling:
       lazy = LazyCompilation(
