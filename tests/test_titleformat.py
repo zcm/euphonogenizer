@@ -184,6 +184,8 @@ test_eval_cases = [
       ("$if2(,'$if2(,'$if2(,'''''$if2(,'$if2(,'a')')')')')",
         "$if2(,''$if2(,a))", False, {}),
       ('$$&$$$$$$$add(1,2)$$$$$$&$$', '$&$$$3$$$&$', False, {}),
+      ('$$&$$$$$$%track%$$$$$$&$$', '$&$$$01$$$&$', True, cs_01),
+      ('$$&$$$$$$[%track%]$$$$$$&$$', '$&$$$01$$$&$', True, cs_01),
     ),
     # Variable resolution tests
     *_testcasegroup('variable',
