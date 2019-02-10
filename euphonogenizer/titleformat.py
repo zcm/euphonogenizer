@@ -1548,11 +1548,11 @@ def unterminated_error(token, expected, offset, i):
 
 
 state_errors = {
-    'L': lambda o, i: unterminated_error('literal', "'", offset, i),
-    'V': lambda o, i: unterminated_error('variable', "'", offset, i),
-    'F': lambda o, i: unterminated_error('function', "'", offset, i),
-    'A': lambda o, i: unterminated_error('function call', "'", offset, i),
-    'C': lambda o, i: unterminated_error('conditional', "'", offset, i),
+    'L': lambda o, i: unterminated_error('literal', "'", o, i),
+    'V': lambda o, i: unterminated_error('variable', "'", o, i),
+    'F': lambda o, i: unterminated_error('function', "'", o, i),
+    'A': lambda o, i: unterminated_error('function call', "'", o, i),
+    'C': lambda o, i: unterminated_error('conditional', "'", o, i),
 }
 
 
@@ -1566,13 +1566,13 @@ class TitleFormatter:
     self.compatible = compatible
     self.log = log
 
-  def format(self, track, title_format):
-    evaluated_value = self.eval(track, title_format)
+  def format(self, track, fmt):
+    evaluated_value = self.eval(track, fmt)
     if evaluated_value is not None:
       return text_type(evaluated_value)
     return None
 
-  def eval(self, track, title_format, conditional=False, depth=0, offset=0,
+  def eval(self, track, fmt, conditional=False, depth=0, offset=0,
       memory={}, compiling=False):
     state = None
     literal = False
@@ -1593,10 +1593,10 @@ class TitleFormatter:
     compiled = []
 
     i = 0
-    length = len(title_format)
+    length = len(fmt)
 
     self.log('fresh call to eval(); format="%s" offset=%s',
-        title_format, offset, depth=depth)
+        fmt, offset, depth=depth)
     self.log(lambda: 'helpful char guide:           ' + (
         ''.join([str(x) * 9 + str(x + 1)
                  for x in range(0, 10)])[0:length]), depth=depth)
@@ -1604,14 +1604,14 @@ class TitleFormatter:
         '1234567890' * (length // 10 + 1))[0:length], depth=depth)
 
     while i < length:
-      c = title_format[i]
+      c = fmt[i]
       i += 1
       if not state:
         if c == "'":
-          buf, i, state = self.literal(title_format, i, length, depth)
+          buf, i, state = self.literal(fmt, i, length, depth)
           output += buf
         elif c == '%':
-          if i < length and title_format[i] == '%':
+          if i < length and fmt[i] == '%':
             output += '%'
             i += 1
             continue
@@ -1620,30 +1620,28 @@ class TitleFormatter:
             output = ''
           self.log('begin parsing variable at char %s', i, depth=depth)
           state = 'V'
+          start = i
           while i < length:
-            c = title_format[i]
-            i += 1
-            if c != '%':
-              current += c
-            else:
+            if fmt[i] == '%':
               if compiling:
                 compiled.append(
-                    lambda t, self=self, current=current, i=i, depth=depth:
+                    lambda t, self=self, current=fmt[start:i], i=i, depth=depth:
                       self.handle_var_resolution(t, current, i, depth))
               else:
                 val, edelta = self.handle_var_resolution(
-                    track, current, i, depth)
+                    track, fmt[start:i], i, depth)
                 output += val
                 evaluation_count += edelta
                 self.log(
                     'evaluation count is now %s', evaluation_count, depth=depth)
 
-              current = ''
               state = None
+              i += 1
               break
+            i += 1
           continue
         elif c == '$':
-          if i < length and title_format[i] == '$':
+          if i < length and fmt[i] == '$':
             output += '$'
             i += 1
             continue
@@ -1654,7 +1652,7 @@ class TitleFormatter:
           state = 'F'
           fn_offset_start = i + 1
           while i < length:
-            c = title_format[i]
+            c = fmt[i]
             i += 1
             if c.isalnum() or c == '_':
               current += c
@@ -1696,9 +1694,9 @@ class TitleFormatter:
           break
         else:
           start = i - 1
-          while i < length and title_format[i] not in "'%$[]()":
+          while i < length and fmt[i] not in "'%$[]()":
             i += 1
-          output += title_format[start:i]
+          output += fmt[start:i]
       else:
         if state[0] == 'A':
           if not parsing_function_recursive:
@@ -1758,8 +1756,7 @@ class TitleFormatter:
                 state = None
                 continue
             if c == "'":
-              buf, i, state = self.arglist_literal(
-                  title_format, i, length, depth)
+              buf, i, state = self.arglist_literal(fmt, i, length, depth)
               current += buf
             elif c == '$':
               self.log('stopped evaluation for function in arg at char %s', i,
@@ -1862,7 +1859,7 @@ class TitleFormatter:
     # At this point, we have reached the end of the input.
     if state:
       if self.compatible:
-        self.log(lambda: state_errors[state](offset, i), depth=depth)
+        self.log(lambda: state_errors[state[0]](offset, i), depth=depth)
       else:
         raise TitleFormatParseException(state_errors[state](offset, i))
 
