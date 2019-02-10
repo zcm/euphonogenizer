@@ -212,11 +212,6 @@ magic_mappings = {
     '_date_': ['DATE'],
 }
 
-def __foo_bool(b):
-  if b:
-    return True
-  return False
-
 def __foo_int(n):
   # Note that this "string value" might actually already be an int, in which
   # case, this function simply ends up stripping the atom wrapper.
@@ -617,12 +612,12 @@ def foo_ansi(track, memory, va_x):
   # have a multibyte build of Python lying around right now, so I can't
   # confirm at the moment. But really, it probably doesn't matter.
   result = text_type(x).encode('windows-1252', '__foo_ansi_replace')
-  return EvaluatorAtom(str(result, 'windows-1252', 'replace'), __foo_bool(x))
+  return EvaluatorAtom(str(result, 'windows-1252', 'replace'), bool(x))
 
 def foo_ascii(track, memory, va_x):
   x = va_x[0].eval()
   result = text_type(x).encode('ascii', '__foo_ascii_replace')
-  return EvaluatorAtom(result.decode('utf-8', 'replace'), __foo_bool(x))
+  return EvaluatorAtom(result.decode('utf-8', 'replace'), bool(x))
 
 def foo_caps_impl(va_x, on_nonfirst):
   x = va_x[0].eval()
@@ -638,7 +633,7 @@ def foo_caps_impl(va_x, on_nonfirst):
         new_word = False
       else:
         result += on_nonfirst(c)
-  return EvaluatorAtom(result, __foo_bool(x))
+  return EvaluatorAtom(result, bool(x))
 
 def foo_caps(track, memory, va_x):
   return foo_caps_impl(va_x, on_nonfirst=lambda c: c.lower())
@@ -665,7 +660,7 @@ def foo_char(track, memory, va_x):
 def foo_crc32(track, memory, va_x):
   x = va_x[0].eval()
   crc = binascii.crc32(binary_type(x))
-  return EvaluatorAtom(crc, __foo_bool(x))
+  return EvaluatorAtom(crc, bool(x))
 
 def foo_crlf(track, memory, va):
   return '\r\n'
@@ -679,26 +674,26 @@ def foo_directory_1(track, memory, va_x):
   # https://tools.ietf.org/html/rfc8089#appendix-E.2.2
   parts = re.split('[\\\\/:|]', text_type(x))
   if len(parts) < 2:
-    return EvaluatorAtom('', __foo_bool(x))
-  return EvaluatorAtom(parts[-2], __foo_bool(x))
+    return EvaluatorAtom('', bool(x))
+  return EvaluatorAtom(parts[-2], bool(x))
 
 def foo_directory_2(track, memory, va_x_n):
   x = va_x_n[0].eval()
   n = __foo_va_conv_n_lazy_int(va_x_n[1])
   if n <= 0:
-    return EvaluatorAtom('', __foo_bool(x))
+    return EvaluatorAtom('', bool(x))
   parts = re.split('[\\\\/:|]', text_type(x))
   parts_len = len(parts)
   if n >= parts_len or parts_len < 2:
-    return EvaluatorAtom('', __foo_bool(x))
-  return EvaluatorAtom(parts[parts_len - n - 1], __foo_bool(x))
+    return EvaluatorAtom('', bool(x))
+  return EvaluatorAtom(parts[parts_len - n - 1], bool(x))
 
 def foo_directory_path(track, memory, va_x):
   x = va_x[0].eval()
   parts = re.split('[\\\\/:|]', text_type(x)[::-1], 1)
   if len(parts) < 2:
-    return EvaluatorAtom('', __foo_bool(x))
-  return EvaluatorAtom(parts[1][::-1], __foo_bool(x))
+    return EvaluatorAtom('', bool(x))
+  return EvaluatorAtom(parts[1][::-1], bool(x))
 
 def foo_ext(track, memory, va_x):
   x = va_x[0]
@@ -713,7 +708,7 @@ def foo_ext(track, memory, va_x):
   if not delimiter or any(c in '/\\|:' for c in ext):
     return ''
 
-  return EvaluatorAtom(ext.partition('?')[0], __foo_bool(x))
+  return EvaluatorAtom(ext.partition('?')[0], bool(x))
 
 def foo_filename(track, memory, va_x):
   x = va_x[0]
@@ -726,7 +721,7 @@ def foo_filename(track, memory, va_x):
   parts = re.split('[\\\\/:|]', text_type(x))
 
   return EvaluatorAtom(
-      parts[-1].partition('?')[0].rsplit('.', 1)[0], __foo_bool(x))
+      parts[-1].partition('?')[0].rsplit('.', 1)[0], bool(x))
 
 def foo_fix_eol_1(track, memory, va_x):
   return foo_fix_eol(track, memory, va_x[0], ' (...)')
@@ -748,7 +743,7 @@ def foo_fix_eol(track, memory, x, indicator):
   parts = re.split('[\r\n]', text_type(x), 1)
 
   if len(parts) > 1:
-    return EvaluatorAtom(parts[0] + indicator, __foo_bool(x))
+    return EvaluatorAtom(parts[0] + indicator, bool(x))
 
   return x
 
@@ -795,7 +790,7 @@ foo_cut = foo_left  # These are the same, so just alias for completeness
 
 def foo_len(track, memory, va_a):
   a = va_a[0].eval()
-  return EvaluatorAtom(len(text_type(a)), __foo_bool(a))
+  return EvaluatorAtom(len(text_type(a)), bool(a))
 
 def foo_len2(track, memory, va_a):
   a = va_a[0].eval()
@@ -809,7 +804,7 @@ def foo_len2(track, memory, va_a):
     elif width == 'W' or width == 'F' or width == 'A':
       # Wide / Fullwidth / Ambiguous character
       length += 2
-  return EvaluatorAtom(length, __foo_bool(a))
+  return EvaluatorAtom(length, bool(a))
 
 def foo_longer(track, memory, va_a_b):
   len_a = len(text_type(va_a_b[0].eval()))
@@ -818,7 +813,7 @@ def foo_longer(track, memory, va_a_b):
 
 def foo_lower(track, memory, va_a):
   a = va_a[0].eval()
-  return EvaluatorAtom(text_type(a).lower(), __foo_bool(a))
+  return EvaluatorAtom(text_type(a).lower(), bool(a))
 
 def foo_longest(track, memory, va_a1_aN):
   longest = None
@@ -839,7 +834,7 @@ def foo_num(track, memory, va_n_len):
     string_value = text_type(__foo_va_conv_n(n)).zfill(length)
   else:
     string_value = text_type(__foo_int(__foo_va_conv_n(n)))
-  return EvaluatorAtom(string_value, __foo_bool(n))
+  return EvaluatorAtom(string_value, bool(n))
 
 def foo_pad_universal(va_x_len_char, right):
   x = va_x_len_char[0].eval()
@@ -863,7 +858,7 @@ def foo_pad_universal(va_x_len_char, right):
       padded = x_str + char * (length - x_len)
     else:
       padded = char * (length - x_len) + x_str
-    return EvaluatorAtom(padded, __foo_bool(x))
+    return EvaluatorAtom(padded, bool(x))
   return x
 
 def foo_pad_arity2(track, memory, va_x_len):
@@ -945,7 +940,7 @@ def foo_progress2(track, memory, va_pos_range_len_a_b):
 def foo_repeat(track, memory, va_a_n):
   a = va_a_n[0].eval()
   n = __foo_va_conv_n_lazy_int(va_a_n[1])
-  return EvaluatorAtom(text_type(a) * n, __foo_bool(a))
+  return EvaluatorAtom(text_type(a) * n, bool(a))
 
 def foo_replace_explode_recursive(a, va_a_bN_cN, i):
   if i + 1 < len(va_a_bN_cN):
@@ -979,7 +974,7 @@ def foo_replace(track, memory, va_a_bN_cN):
   result = foo_replace_join_recursive(splits, va_a_bN_cN, 2)
   # Truthfully, I have no idea if this is actually right, but it's probably good
   # enough for what it does. The sample cases check out, at least.
-  return EvaluatorAtom(result, __foo_bool(a))
+  return EvaluatorAtom(result, bool(a))
 
 def foo_right(track, memory, va_a_len):
   a = va_a_len[0].eval()
@@ -989,8 +984,8 @@ def foo_right(track, memory, va_a_len):
   if a_len == 0 or length >= a_len:
     return a
   elif length <= 0:
-    return EvaluatorAtom('', __foo_bool(a))
-  return EvaluatorAtom(a_str[a_len-length:], __foo_bool(a))
+    return EvaluatorAtom('', bool(a))
+  return EvaluatorAtom(a_str[a_len-length:], bool(a))
 
 __roman_numerals = (
     ('M',  1000),
@@ -1017,12 +1012,12 @@ def foo_roman(track, memory, va_n):
       while n_int >= value:
         result += numeral
         n_int -= value
-  return EvaluatorAtom(result, __foo_bool(n))
+  return EvaluatorAtom(result, bool(n))
 
 def foo_rot13(track, memory, va_a):
   a = va_a[0].eval()
   rot = codecs.encode(text_type(a), 'rot_13')
-  return EvaluatorAtom(rot, __foo_bool(a))
+  return EvaluatorAtom(rot, bool(a))
 
 def foo_shortest(track, memory, va_aN):
   shortest = None
@@ -1061,7 +1056,7 @@ def foo_strstr(track, memory, va_s1_s2):
   found_index = 0
   if s1 and s2:
     found_index = s1.find(s2) + 1
-  return EvaluatorAtom(found_index, __foo_bool(found_index))
+  return EvaluatorAtom(found_index, bool(found_index))
 
 def foo_strcmp(track, memory, va_s1_s2):
   s1 = va_s1_s2[0].eval()
@@ -1082,7 +1077,7 @@ def foo_substr(track, memory, va_s_m_n):
   m = __foo_va_conv_n_lazy_int(va_s_m_n[1]) - 1
   n = __foo_va_conv_n_lazy_int(va_s_m_n[2])
   if n < m:
-    return EvaluatorAtom('', __foo_bool(s))
+    return EvaluatorAtom('', bool(s))
   if m < 0:
     m = 0
   s_str = text_type(s)
@@ -1096,7 +1091,7 @@ def foo_substr(track, memory, va_s_m_n):
     result = s_str[m:]
   else:
     result = s_str[m:n]
-  return EvaluatorAtom(result, __foo_bool(s))
+  return EvaluatorAtom(result, bool(s))
 
 def foo_strip_swap_prefix(va_x_prefixN, should_swap):
   x = va_x_prefixN[0].eval()
@@ -1119,7 +1114,7 @@ def foo_strip_swap_prefix(va_x_prefixN, should_swap):
         actual_prefix = x_str[0:prefix_len]
         result += ', ' + actual_prefix
 
-      return EvaluatorAtom(result, __foo_bool(x))
+      return EvaluatorAtom(result, bool(x))
 
   return x
 
@@ -1137,7 +1132,7 @@ def foo_swapprefix_arityN(track, memory, va_x_prefixN):
 
 def foo_trim(track, memory, va_s):
   s = va_s[0].eval()
-  return EvaluatorAtom(text_type(s).strip(), __foo_bool(s))
+  return EvaluatorAtom(text_type(s).strip(), bool(s))
 
 def foo_tab_arity0(track, memory, va):
   return '\t'
@@ -1150,7 +1145,7 @@ def foo_tab_arity1(track, memory, va_n):
 
 def foo_upper(track, memory, va_s):
   s = va_s[0].eval()
-  return EvaluatorAtom(text_type(s).upper(), __foo_bool(s))
+  return EvaluatorAtom(text_type(s).upper(), bool(s))
 
 def foo_meta_arity1(track, memory, va_name):
   return foo_meta_sep_arity2(track, memory, va_name + [', '])
@@ -1247,7 +1242,7 @@ def foo_put(track, memory, va_name_value):
 
 def foo_puts(track, memory, va_name_value):
   value = foo_put(track, memory, va_name_value)
-  return __foo_bool(value)
+  return bool(value)
 
 
 foo_function_vtable = {
