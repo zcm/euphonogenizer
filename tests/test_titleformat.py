@@ -134,6 +134,7 @@ test_eval_cases = [
       ("a'b", 'a', False, None),
       ('$', '', False, None),
       ('a$b', 'a', False, None),
+      ('$a$', '', False, None),
       ('(', '', False, None),
       ('a(b', 'a', False, None),
       (')', '', False, None),

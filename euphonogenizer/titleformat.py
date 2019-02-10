@@ -1551,7 +1551,6 @@ class TitleFormatter:
 
   def eval(self, track, title_format, conditional=False, depth=0, offset=0,
       memory={}, compiling=False):
-    lookbehind = None
     outputting = True
     literal = False
     literal_count = None
@@ -1581,10 +1580,11 @@ class TitleFormatter:
 
     self.log('fresh call to eval(); format="%s" offset=%s',
         title_format, offset, depth=depth)
-    self.log(lambda: 'helpful char guide:           ' + (
-        '1234567890' * (length // 10 + 1))[0:length], depth=depth)
-    self.log(lambda: 'helpful char guide:           ' + (
-        ''.join([str(x)*9+str(x+1) for x in range(0,10)])[0:length]), depth=depth)
+    #self.log(lambda: 'helpful char guide:           ' + (
+        #'1234567890' * (length // 10 + 1))[0:length], depth=depth)
+    #self.log(lambda: 'helpful char guide:           ' + (
+        #''.join([str(x) * 9 + str(x + 1)
+                 #for x in range(0, 10)])[0:length]), depth=depth)
 
     while i < length:
       c = title_format[i]
@@ -1595,24 +1595,40 @@ class TitleFormatter:
           output += buf
         elif c == '%':
           self.log('begin parsing variable at char %s', i, depth=depth)
-          if parsing_variable or parsing_function or parsing_conditional:
-            raise TitleFormatParseException(
-                "Something went horribly wrong while parsing token '%'")
           outputting = False
           parsing_variable = True
         elif c == '$':
+          if i < length and title_format[i] == '$':
+            output += '$'
+            i += 1
+            continue
           self.log('begin parsing function at char %s', i, depth=depth)
-          if parsing_variable or parsing_function or parsing_conditional:
-            raise TitleFormatParseException(
-                "Something went horribly wrong while parsing token '$'")
           outputting = False
           parsing_function = True
           fn_offset_start = i + 1
+          while i < length:
+            c = title_format[i]
+            i += 1
+            if c == '(':
+              self.log(
+                  'parsed function "%s" at char %s', current, i, depth=depth)
+              current_fn = current
+              current = ''
+              parsing_function = False
+              parsing_function_args = True
+              offset_start = i + 1
+              break
+            elif c.isalnum() or c == '_':
+              current += c
+            else:
+              if self.compatible:
+                break
+              raise TitleFormatParseException(
+                  "Illegal token '%s' encountered at char %s" % (c, i))
+          if not outputting and not parsing_function_args:
+            break
         elif c == '[':
           self.log('begin parsing conditional at char %s', i, depth=depth)
-          if parsing_variable or parsing_function or parsing_conditional:
-            raise TitleFormatParseException(
-                "Something went horribly wrong while parsing token '['")
           outputting = False
           parsing_conditional = True
           offset_start = i + 1
@@ -1638,9 +1654,6 @@ class TitleFormatter:
           output = ''
       else:
         if parsing_variable:
-          if literal:
-            raise TitleFormatParseException(
-                'Invalid parse state: Cannot parse names while in literal mode')
           if c == '%':
             if compiling:
               compiled.append(
@@ -1664,40 +1677,6 @@ class TitleFormatter:
               bad_var_char = (c, offset + i)
 
             current += c
-          else:
-            current += c
-        elif parsing_function:
-          if literal:
-            raise TitleFormatParseException(
-                'Invalid parse state: Cannot parse names while in literal mode')
-          if c == '(':
-            self.log('parsed function "%s" at char %s', current, i, depth=depth)
-
-            current_fn = current
-            current = ''
-            parsing_function = False
-            parsing_function_args = True
-            offset_start = i + 1
-          elif c == ')':
-            message = self.make_backwards_error(')', '(', offset, i)
-            if self.compatible:
-              self.log(lambda: self.make_noncompatible_dbg_msg(message),
-                  depth=depth)
-              break
-            else:
-              raise TitleFormatParseException(
-                  self.make_noncompatible_dbg_msg(message))
-          elif c == '$' and lookbehind == '$':
-            self.log('output single $ due to lookbehind at char %s', i,
-                depth=depth)
-            output += c
-            outputting = True
-            parsing_function = False
-          elif not (c == '_' or c.isalnum()):
-            if self.compatible:
-              break
-            raise TitleFormatParseException(
-                "Illegal token '%s' encountered at char %s" % (c, i))
           else:
             current += c
         elif parsing_function_args:
@@ -1863,7 +1842,6 @@ class TitleFormatter:
           # Whatever is happening is invalid.
           raise TitleFormatParseException(
               "Invalid title format parse state: Can't handle character " + c)
-      lookbehind = c
 
     # At this point, we have reached the end of the input.
     message = None
