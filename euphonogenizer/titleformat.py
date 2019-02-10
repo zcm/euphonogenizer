@@ -1586,8 +1586,6 @@ class TitleFormatter:
     recursive_lparen_count = 0
     recursive_rparen_count = 0
     output = ''
-    current = ''
-    current_fn = ''
     current_argv = []
 
     compiled = []
@@ -1650,6 +1648,7 @@ class TitleFormatter:
             output = ''
           self.log('begin parsing function at char %s', i, depth=depth)
           state = 'F'
+          current = ''
           fn_offset_start = i + 1
           while i < length:
             c = fmt[i]
@@ -1678,6 +1677,7 @@ class TitleFormatter:
             output = ''
           self.log('begin parsing conditional at char %s', i, depth=depth)
           state = 'C'
+          current = ''
           offset_start = i + 1
         elif c == ']':
           if self.compatible:
@@ -1841,7 +1841,6 @@ class TitleFormatter:
                   self.log('evaluation count is now %s', evaluation_count,
                       depth=depth)
 
-                current = ''
                 conditional_parse_count = 0
                 state = None
             elif c == "'":
