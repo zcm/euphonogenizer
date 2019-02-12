@@ -196,11 +196,14 @@ def magic_map_track_number(formatter, track):
   return None
 
 
+# TODO: Figure out what should happen when newlines are present; multiline?
 magic_mappings = {
     'album artist': ['ALBUM ARTIST', 'ARTIST', 'COMPOSER', 'PERFORMER'],
     'album': ['ALBUM', 'VENUE'],
     'artist': ['ARTIST', 'ALBUM ARTIST', 'COMPOSER', 'PERFORMER'],
+    'disc': ['DISCNUMBER', 'DISC'],  # undocumented
     'discnumber': ['DISCNUMBER', 'DISC'],
+    'disc number': ['DISCNUMBER', 'DISC'],  # undocumented
     'filename': magic_map_filename,
     'filename_ext': magic_map_filename_ext,
     'track artist': magic_map_track_artist,

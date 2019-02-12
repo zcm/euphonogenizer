@@ -35,6 +35,34 @@ fake = {
     "SLASH" : "/",
 }
 
+mm_album_artist = {
+    "ALBUM ARTIST" : "me",
+    "ARTIST" : "not me",
+    "COMPOSER" : "someone else",
+    "PERFORMER" : "that other guy",
+}
+
+mm_album_artist_only = {
+    "ALBUM ARTIST" : "me",
+    "COMPOSER" : "someone else",
+    "PERFORMER" : "that other guy",
+}
+
+mm_artist = {
+    "ARTIST" : "me this time",
+    "COMPOSER" : "still not me",
+    "PERFORMER" : "but this time it's that other guy",
+}
+
+mm_composer = {
+    "COMPOSER" : "just taking credit",
+    "PERFORMER" : "this guy",
+}
+
+mm_performer = {
+    "PERFORMER" : "Britney Spears",
+}
+
 window_title_integration_fmt = (
     "[%artist% - ]%title%["
       + " '['["
@@ -194,12 +222,30 @@ test_eval_cases = [
       ('*[%missing% - ]*', '**', False, cs_01),
       ("'%artist%'", '%artist%', False, cs_01),
     ),
+    # Magic mappings
+    *_testcasegroup('variable:magic_mapping',
+      ('%album artist%-1', 'me-1', True, mm_album_artist),
+      ('%album artist%-2', 'me this time-2', True, mm_artist),
+      ('%album artist%-3', 'just taking credit-3', True, mm_composer),
+      ('%album artist%-4', 'Britney Spears-4', True, mm_performer),
+      ('%album artist%-5', '?-5', False, fake),
+      ('%artist%-1', 'not me-1', True, mm_album_artist),
+      ('%artist%-2', 'me-2', True, mm_album_artist_only),
+      ('%artist%-3', 'me this time-3', True, mm_artist),
+      ('%artist%-4', 'just taking credit-4', True, mm_composer),
+      ('%artist%-5', 'Britney Spears-5', True, mm_performer),
+      ('%artist%-6', '?-6', False, fake),
+    ),
     # Bizarre variable resolution, yes this actually works in foobar
     *_testcasegroup('variable:arithmetic_magic',
       ('$add(1%track%,10)', '111', True, cs_01),
       ('$sub(1%track%,10)', '91', True, cs_01),
       ('$mul(1%track%,10)', '1010', True, cs_01),
       ('$div(1%track%,10)', '10', True, cs_01),
+    ),
+    *_testcasegroup('conditional',
+      ('asdf[jkl][qwer%disc%[ty]uiop]%track%[a[b[$add(1,%track%)]c]d]',
+        'asdfqwer1uiop01ab2cd', True, cs_01),
     ),
     # Sanity tests, basic non-generated cases that validate generated ones
     *_testcasegroup('sanity:arithmetic',
