@@ -1562,15 +1562,19 @@ state_errors = {
 }
 
 
+default_ccache = {}
+
+
 class TitleFormatter:
   def __init__(
       self, case_sensitive=False, magic=True, for_filename=False,
-      compatible=True, log=nop):
+      compatible=True, log=nop, ccache=default_ccache):
     self.case_sensitive = case_sensitive
     self.magic = magic
     self.for_filename = for_filename
     self.compatible = compatible
     self.log = log
+    self.ccache = ccache
 
   def format(self, track, fmt):
     evaluated_value = self.eval(track, fmt)
@@ -1580,6 +1584,9 @@ class TitleFormatter:
 
   def eval(self, track, fmt, conditional=False, depth=0, offset=0,
       memory={}, compiling=False):
+    if fmt in self.ccache:
+        return self.ccache[fmt] if compiling else self.ccache[fmt](track)
+
     state = None
     literal = False
     parsing_function_recursive = False
@@ -1879,8 +1886,9 @@ class TitleFormatter:
         output = ''
       self.log('eval() compiled the input into %s blocks', len(compiled),
           depth=depth)
-      return (lambda t, self=self, compiled=compiled, depth=depth:
+      self.ccache[fmt] = (lambda t, self=self, compiled=compiled, depth=depth:
         self.invoke_jit_eval(compiled, depth, t))
+      return self.ccache[fmt]
 
     if depth == 0 and self.for_filename:
       output = foobar_filename_escape(output)
