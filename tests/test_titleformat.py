@@ -1323,7 +1323,7 @@ class TestTitleFormatter:
     pytest.param(True, id='compiled'),
   ])
   @pytest.mark.parametrize('fmt,expected,expected_truth,track', test_eval_cases)
-  def test_eval(self, fmt, expected, expected_truth, compiled, track):
+  def test_eval(self, fmt, expected, expected_truth, track, compiled):
     if compiled:
       fn = f.eval(None, fmt, compiling=True)
       result = fn(track)
@@ -1351,3 +1351,12 @@ class TestTitleFormatter:
     assert result_ascii.string_value == expected_ascii
     assert not result_ascii.truth_value
 
+
+def run_tests():
+  ttf = TestTitleFormatter()
+  for t in test_eval_cases:
+    ttf.test_eval(*t.values, 0)
+    ttf.test_eval(*t.values, 1)
+
+if __name__ == '__main__':
+  run_tests()
