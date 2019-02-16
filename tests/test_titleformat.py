@@ -1330,8 +1330,8 @@ class TestTitleFormatter:
     else:
       result = f.eval(track, fmt)
 
-    assert result.string_value == expected
-    assert result.truth_value is expected_truth
+    assert result.value == expected
+    assert result.truth is expected_truth
 
   @pytest.mark.parametrize('block', encoding_tests.keys())
   def test_eval_ansi_encoding(self, block):
@@ -1339,8 +1339,8 @@ class TestTitleFormatter:
 
     result_ansi = f.eval(None, "$ansi('%s')" % unicode_input)
 
-    assert result_ansi.string_value == expected_ansi
-    assert not result_ansi.truth_value
+    assert result_ansi.value == expected_ansi
+    assert not result_ansi.truth
 
   @pytest.mark.parametrize('block', encoding_tests.keys())
   def test_eval_ascii_encoding(self, block):
@@ -1348,8 +1348,8 @@ class TestTitleFormatter:
 
     result_ascii = f.eval(None, "$ascii('%s')" % unicode_input)
 
-    assert result_ascii.string_value == expected_ascii
-    assert not result_ascii.truth_value
+    assert result_ascii.value == expected_ascii
+    assert not result_ascii.truth
 
 
 def run_tests():

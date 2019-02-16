@@ -23,129 +23,120 @@ from six import binary_type, text_type
 
 
 @six.python_2_unicode_compatible
-class EvaluatorAtom:
-  def __init__(self, string_value, truth_value):
-    self.string_value = string_value
-    self.truth_value = truth_value
+class EvaluatorAtom(object):
+  __slots__ = 'value', 'truth'
+
+  def __init__(self, value, truth):
+    self.value = value
+    self.truth = truth
 
   def __add__(self, other):
     return EvaluatorAtom(
-        self.string_value + other.string_value,
-        self.truth_value or other.truth_value)
+        self.value + other.value,
+        self.truth or other.truth)
 
   def __iadd__(self, other):
-    self.string_value += other.string_value
-    self.truth_value |= other.truth_value
+    self.value += other.value
+    self.truth |= other.truth
     return self
 
   def __sub__(self, other):
     return EvaluatorAtom(
-        self.string_value - other.string_value,
-        self.truth_value or other.truth_value)
+        self.value - other.value,
+        self.truth or other.truth)
 
   def __isub__(self, other):
-    self.string_value -= other.string_value
-    self.truth_value |= other.truth_value
+    self.value -= other.value
+    self.truth |= other.truth
     return self
 
   def __mul__(self, other):
     return EvaluatorAtom(
-        self.string_value * other.string_value,
-        self.truth_value or other.truth_value)
+        self.value * other.value,
+        self.truth or other.truth)
 
   def __imul__(self, other):
-    self.string_value *= other.string_value
-    self.truth_value |= other.truth_value
+    self.value *= other.value
+    self.truth |= other.truth
     return self
 
-  def __foo_div_logic(self, x, y):
-    if y == 0:
-      # Foobar skips division for zeros instead of exploding.
-      return x
+  @staticmethod
+  def __foo_div_logic(x, y):
+    # Foobar skips division for zeros instead of exploding.
     # For some reason, Foobar rounds up when negative and down when positive.
-    if x * y < 0:
-      return x * -1 // y * -1
-    return x // y
+    return x if y == 0 else x * -1 // y * -1 if x * y < 0 else x // y
 
   def __floordiv__(self, other):
     return EvaluatorAtom(
-        self.__foo_div_logic(self.string_value, other.string_value),
-        self.truth_value or other.truth_value)
+        self.__foo_div_logic(self.value, other.value),
+        self.truth or other.truth)
 
   def __ifloordiv__(self, other):
-    self.string_value = self.__foo_div_logic(
-        self.string_value, other.string_value)
-    self.truth_value |= other.truth_value
+    self.value = self.__foo_div_logic(self.value, other.value)
+    self.truth |= other.truth
     return self
 
   def __foo_mod_logic(self, x, y):
-    if x == 0:
-      return 0
-    if y == 0:
-      return x
-    return x % y
+    return 0 if x == 0 else x if y == 0 else x % y
 
   def __mod__(self, other):
     return EvaluatorAtom(
-        self.__foo_mod_logic(self.string_value, other.string_value),
-        self.truth_value or other.truth_value)
+        self.__foo_mod_logic(self.value, other.value),
+        self.truth or other.truth)
 
   def __imod__(self, other):
-    self.string_value = self.__foo_mod_logic(
-        self.string_value, other.string_value)
-    self.truth_value |= other.truth_value
+    self.value = self.__foo_mod_logic(self.value, other.value)
+    self.truth |= other.truth
     return self
 
   def __eq__(self, other):
-    if (isinstance(other, EvaluatorAtom)):
-      return (self.string_value == other.string_value
-          and self.truth_value is other.truth_value)
-    return NotImplemented
+    return (self.value == other.value and self.truth is other.truth
+            if isinstance(other, EvaluatorAtom) else NotImplemented)
 
   def __ne__(self, other):
-    e = self.__eq__(other)
-    return NotImplemented if e is NotImplemented else not e
+    return (self.value != other.value or self.truth is not other.truth
+            if isinstance(other, EvaluatorAtom) else NotImplemented)
 
   def __gt__(self, other):
-    return self.string_value > other.string_value
+    return self.value > other.value
 
   def __lt__(self, other):
-    return self.string_value < other.string_value
+    return self.value < other.value
 
   def __and__(self, other):
-    return self.truth_value and other.truth_value
+    return self.truth and other.truth
 
   def __iand__(self, other):
-    self.truth_value &= other.truth_value
+    self.truth &= other.truth
     return self
 
   def __or__(self, other):
-    return self.truth_value or other.truth_value
+    return self.truth or other.truth
 
   def __ior__(self, other):
-    self.truth_value |= other.truth_value
+    self.truth |= other.truth
     return self
 
   def __hash__(self):
-    return hash(tuple(sorted(self.__dict__.items())))
+    return hash((self.value, self.truth))
 
   def __str__(self):
-    return text_type(self.string_value)
+    return text_type(self.value)
 
   def __bytes__(self):
-    return binary_type(self.string_value, 'utf-8')
+    return binary_type(self.value, 'utf-8')
 
   def __nonzero__(self):
-    return self.truth_value
+    return self.truth
 
   def __bool__(self):
-    return self.truth_value
+    return self.truth
 
   def __len__(self):
-    return len(str(self.string_value))
+    return len(str(self.value))
 
   def __repr__(self):
-    return 'atom(%s, %s)' % (repr(self.string_value), self.truth_value)
+    return 'atom(%s, %s)' % (repr(self.value), self.truth)
 
   def eval(self):
     # Evaluating an expression that's already been evaluated returns itself.
@@ -220,7 +211,7 @@ def __foo_int(n):
   # case, this function simply ends up stripping the atom wrapper.
   try:
     if n is not None and n != '':
-      return int(n.string_value)
+      return int(n.value)
   except AttributeError:
     try:
       return int(n)
@@ -235,8 +226,8 @@ def __foo_va_conv_n_unsafe(n):
   integer_value = 0
 
   try:
-    strval = n.string_value.strip()
-    truth = n.truth_value
+    strval = n.value.strip()
+    truth = n.truth
   except AttributeError:
     strval = n
     try:
@@ -269,7 +260,7 @@ def __foo_va_conv_n(n):
     pass
 
   try:
-    return EvaluatorAtom(0, n.truth_value)
+    return EvaluatorAtom(0, n.truth)
   except AttributeError:
     pass
 
@@ -282,7 +273,7 @@ def __foo_va_conv_bool_lazy(b):
   try:
     value = b.eval()
     try:
-      return value.truth_value
+      return value.truth
     except AttributeError:
       return value
   except AttributeError:
@@ -328,13 +319,13 @@ def foo_nnop(track, memory, va):
 
   try:
     try:
-      val.string_value = nnop_known_table[val.string_value]
+      val.value = nnop_known_table[val.value]
       return val
     except KeyError:
       pass
 
     val = __foo_va_conv_n_unsafe(val)
-    val.string_value = text_type(val.string_value)
+    val.value = text_type(val.value)
     return val
   except AttributeError:
     pass
@@ -463,10 +454,10 @@ def foo_mul(track, memory, va_aN):
 
 def foo_muldiv(track, memory, va_a_b_c):
   c = __foo_va_conv_n_lazy(va_a_b_c[2])
-  c.truth_value = True  # Truth behavior confirmed by experimentation.
-  if c.string_value == 0:
+  c.truth = True  # Truth behavior confirmed by experimentation.
+  if c.value == 0:
     # This is real Foobar behavior for some reason, probably a bug.
-    c.string_value = -1
+    c.value = -1
     return c
   a = __foo_va_conv_n_lazy(va_a_b_c[0])
   a *= __foo_va_conv_n_lazy(va_a_b_c[1])
@@ -506,8 +497,8 @@ def foo_xor(track, memory, va_N):
 
 __foo_abbr_charstrip = re.compile('[()/\\\\,]')
 
-def foo_abbr(string_value):
-  parts = __foo_abbr_charstrip.sub(' ', string_value).split(' ')
+def foo_abbr(value):
+  parts = __foo_abbr_charstrip.sub(' ', value).split(' ')
   abbr = ''
   for each in parts:
     if len(each):
@@ -522,7 +513,7 @@ def foo_abbr(string_value):
 
 def foo_abbr1(track, memory, va_x):
   x = va_x[0].eval()
-  x.string_value = foo_abbr(str(x))
+  x.value = foo_abbr(str(x))
   return x
 
 def foo_abbr2(track, memory, va_x_len):
@@ -530,7 +521,7 @@ def foo_abbr2(track, memory, va_x_len):
   length = __foo_va_conv_n_lazy_int(va_x_len[1])
   sx = str(x)
   if len(sx) > length:
-    x.string_value = foo_abbr(sx)
+    x.value = foo_abbr(sx)
   return x
 
 
@@ -763,7 +754,7 @@ def foo_hex(track, memory, n, length=0):
   n = __foo_va_conv_n_lazy(n)
   length = __foo_va_conv_n_lazy_int(length)
 
-  n.string_value = hex(
+  n.value = hex(
       max(-0x8000000000000000, min(__foo_int(n), 0x7FFFFFFFFFFFFFFF)
         ) % 0x100000000)[2:].upper().zfill(max(0, min(length, 32)))
 
@@ -775,9 +766,9 @@ def foo_insert(track, memory, va_a_b_n):
   n = __foo_va_conv_n_lazy_int(va_a_b_n[2])
 
   if n < 0:
-    a.string_value += b
+    a.value += b
   else:
-    a.string_value = a.string_value[0:n] + b + a.string_value[n:]
+    a.value = a.value[0:n] + b + a.value[n:]
   return a
 
 def foo_left(track, memory, va_a_len):
@@ -785,7 +776,7 @@ def foo_left(track, memory, va_a_len):
   length = __foo_va_conv_n_lazy_int(va_a_len[1])
 
   if length >= 0:
-    a.string_value = a.string_value[0:length]
+    a.value = a.value[0:length]
 
   return a
 
@@ -832,12 +823,12 @@ def foo_longest(track, memory, va_a1_aN):
 def foo_num(track, memory, va_n_len):
   n = va_n_len[0].eval()
   length = __foo_va_conv_n_lazy_int(va_n_len[1])
-  string_value = None
+  value = None
   if (length > 0):
-    string_value = text_type(__foo_va_conv_n(n)).zfill(length)
+    value = text_type(__foo_va_conv_n(n)).zfill(length)
   else:
-    string_value = text_type(__foo_int(__foo_va_conv_n(n)))
-  return EvaluatorAtom(string_value, bool(n))
+    value = text_type(__foo_int(__foo_va_conv_n(n)))
+  return EvaluatorAtom(value, bool(n))
 
 def foo_pad_universal(va_x_len_char, right):
   x = va_x_len_char[0].eval()
@@ -1349,10 +1340,6 @@ foo_function_vtable = {
 }
 
 
-class FunctionVirtualInvocationException(Exception):
-  pass
-
-
 def vmarshal(value):
   if type(value) is EvaluatorAtom:
     return value
@@ -1374,7 +1361,7 @@ def vlookup(function, arity):
       try:
         return fn_vector['n']
       except KeyError:
-        raise FunctionVirtualInvocationException(
+        raise TitleformatRuntimeError(
             'The function with name "%s" has no definition for arity %s' % (
               function, arity))
   except KeyError:
@@ -1386,11 +1373,11 @@ def vlookup(function, arity):
         try:
           return fn_vector['n']
         except KeyError:
-          raise FunctionVirtualInvocationException(
+          raise TitleformatRuntimeError(
               'Function "' + function + '" is undefined and the default'
               + ' handler has no definition for arity ' + arity)
     except KeyError:
-      raise FunctionVirtualInvocationException(
+      raise TitleformatRuntimeError(
           'The function with name "' + function + '" has no definition and no'
           + ' default handler has been defined')
 
@@ -1429,6 +1416,10 @@ def foobar_filename_escape(output):
 
 
 class LazyExpression:
+  __slots__ = (
+      'formatter', 'track', 'current', 'conditional', 'depth', 'offset',
+      'memory', 'value', 'evaluated')
+
   def __init__(self,
       formatter, track, expression, conditional, depth, offset, track_memory):
     self.formatter = formatter
@@ -1456,24 +1447,26 @@ class LazyExpression:
     return "lazy(%s)" % repr(self.current)
 
 
-class CurriedCompilation:
+class CurriedCompilation(object):
+  __slots__ = 'lazycomp', 'track', 'lazyvalue'
+
   def __init__(self, lazycomp, track):
     self.lazycomp = lazycomp
     self.track = track
-    self.value = None
+    self.lazyvalue = None
 
   def eval(self):
-    if self.value is None:
-      self.value = self.lazycomp(self.track)
-    return self.value
+    if self.lazyvalue is None:
+      self.lazyvalue = self.lazycomp(self.track)
+    return self.lazyvalue
 
   @property
-  def string_value(self):
-    return self.eval()[0].string_value
+  def value(self):
+    return self.eval()[0].value
 
   @property
-  def truth_value(self):
-    return self.eval()[0].truth_value
+  def truth(self):
+    return self.eval()[0].truth
 
   @property
   def eval_count(self):
@@ -1496,7 +1489,11 @@ def dbglog(fmt, *args, **kwargs):
       dbg(fmt, **kwargs)
 
 
-class LazyCompilation:
+class LazyCompilation(object):
+  __slots__ = (
+      'formatter', 'current', 'conditional', 'depth', 'offset', 'memory', 'log',
+      'codeblock')
+
   def __init__(self,
       formatter, expression, conditional, depth, offset, track_memory,
       log=nop):
@@ -1530,7 +1527,11 @@ class LazyCompilation:
     return 'lazycomp(cb=%s, %s)' % (repr(self.codeblock), repr(self.current))
 
 
-class TitleFormatParseException(Exception):
+class TitleformatError(Exception):
+  pass
+
+
+class TitleformatRuntimeError(TitleformatError):
   pass
 
 
@@ -1555,17 +1556,17 @@ def unterminated_error(token, expected, offset, i):
 
 state_errors = {
     'L': lambda o, i: unterminated_error('literal', "'", o, i),
-    'V': lambda o, i: unterminated_error('variable', "'", o, i),
-    'F': lambda o, i: unterminated_error('function', "'", o, i),
-    'A': lambda o, i: unterminated_error('function call', "'", o, i),
-    'C': lambda o, i: unterminated_error('conditional', "'", o, i),
+    'V': lambda o, i: unterminated_error('variable', "%", o, i),
+    'F': lambda o, i: unterminated_error('function', "(", o, i),
+    'A': lambda o, i: unterminated_error('function call', ")", o, i),
+    'C': lambda o, i: unterminated_error('conditional', "]", o, i),
 }
 
 
 default_ccache = {}
 
 
-class TitleFormatter:
+class TitleFormatter(object):
   __slots__ = (
       'case_sensitive', 'magic', 'for_filename', 'compatible', 'log', 'ccache')
 
@@ -1590,12 +1591,9 @@ class TitleFormatter:
     if fmt in self.ccache:
       return self.ccache[fmt] if compiling else self.ccache[fmt](track)
 
-    state, lit, recur, poison, offstart, fnoffstart, conds, evals, argparens = (
-        0, 0, 0, 0, 0, 0, 0, 0, 0)
-    recursive_lparens, recursive_rparens, output, current_argv, compiled = (
-        0, 0, [], [], [])
-
-    i, length = 0, len(fmt)
+    (state, lit, recur, poison, offstart, fnoffstart, conds, evals, argparens,
+     innerparens, output, current_argv, compiled, i, length) = (
+        None, False, False, False, 0, 0, 0, 0, 0, 0, [], [], [], 0, len(fmt))
 
     self.log('fresh call to eval(); format="%s" offset=%s',
         fmt, offset, depth=depth)
@@ -1609,7 +1607,8 @@ class TitleFormatter:
       while 1:
         c, i = fmt[i], i + 1
         if c == "'":
-          state, buf, i, state = 'L', *self.literal(fmt, i, depth)
+          state = 'L'
+          buf, i, state = self.literal(fmt, i, depth)
           output.append(buf)
         elif c == '%':
           if fmt[i] == '%':
@@ -1655,7 +1654,7 @@ class TitleFormatter:
             else:
               if self.compatible:
                 break
-              raise TitleFormatParseException(
+              raise TitleformatError(
                   "Illegal token '%s' encountered at char %s" % (c, i))
           if state != 'A':
             break
@@ -1726,7 +1725,7 @@ class TitleFormatter:
                     'stopped evaluation for function in arg at char %s', i,
                     depth=depth)
                 current += c
-                recur, recursive_lparens, recursive_rparens = True, 0, 0
+                recur, innerparens = True, 0
               elif c == '(':
                 argparens += 1
                 if self.compatible:
@@ -1747,21 +1746,20 @@ class TitleFormatter:
             else: # parsing_function_recursive
               current += c
               if c == '(':
-                recursive_lparens += 1
+                innerparens += 1
               elif c == ')':
-                recursive_rparens += 1
-                if recursive_lparens == recursive_rparens:
+                innerparens -= 1
+                if not innerparens:
                   # Stop skipping evaluation.
                   self.log('resumed evaluation at char %s', i, depth=depth)
                   recur = False
-                elif recursive_lparens < recursive_rparens:
+                elif innerparens < 0:
                   if self.compatible:
                     self.log(lambda: noncompatible_dbg_msg(
                       backwards_error(')', '(', offset, i)), depth=depth)
                     break
                   else:
-                    raise TitleFormatParseException(
-                        backwards_error(')', '(', offset, i))
+                    raise TitleformatError(backwards_error(')', '(', offset, i))
           if state:
             break
         elif c == '[':
@@ -1831,8 +1829,7 @@ class TitleFormatter:
               backwards_error(']', '[', offset, i)), depth=depth)
             break
           else:
-            raise TitleFormatParseException(
-                backwards_error(']', '[', offset, i))
+            raise TitleformatError(backwards_error(']', '[', offset, i))
         elif (c == '(' or c == ')') and self.compatible:
           # This seems like a foobar bug; parens shouldn't do anything outside
           # of a function call, but foobar will just explode if it sees a lone
@@ -1855,7 +1852,7 @@ class TitleFormatter:
       if self.compatible:
         self.log(lambda: state_errors[state[0]](offset, i), depth=depth)
       else:
-        raise TitleFormatParseException(state_errors[state](offset, i))
+        raise TitleformatError(state_errors[state[0]](offset, i))
 
     if compiling:
       if len(output) > 0:
