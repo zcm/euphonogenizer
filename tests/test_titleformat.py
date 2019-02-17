@@ -1357,6 +1357,9 @@ def run_tests():
   for t in test_eval_cases:
     ttf.test_eval(*t.values, 0)
     ttf.test_eval(*t.values, 1)
+  for e in encoding_tests.keys():
+    ttf.test_eval_ansi_encoding(e)
+    ttf.test_eval_ascii_encoding(e)
 
 if __name__ == '__main__':
   run_tests()

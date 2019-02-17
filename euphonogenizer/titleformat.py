@@ -1591,183 +1591,38 @@ class TitleFormatter(object):
     if fmt in self.ccache:
       return self.ccache[fmt] if compiling else self.ccache[fmt](track)
 
-    (state, lit, recur, poison, offstart, fnoffstart, conds, evals, argparens,
-     innerparens, output, current_argv, compiled, i, length) = (
-        None, False, False, False, 0, 0, 0, 0, 0, 0, [], [], [], 0, len(fmt))
+    state, lit, conds, evals, output, compiled, i = None, False, 0, 0, [], [], 0
+    offstart = 0
 
     self.log('fresh call to eval(); format="%s" offset=%s',
         fmt, offset, depth=depth)
     self.log(lambda: 'helpful char guide:           ' + (
         ''.join([str(x) * 9 + str(x + 1)
-                 for x in range(0, 10)])[0:length]), depth=depth)
+                 for x in range(0, 10)])[0:len(fmt)]), depth=depth)
     self.log(lambda: 'helpful char guide:           ' + (
-        '1234567890' * (length // 10 + 1))[0:length], depth=depth)
+        '1234567890' * (len(fmt) // 10 + 1))[0:len(fmt)], depth=depth)
 
     try:
       while 1:
         c, i = fmt[i], i + 1
         if c == "'":
           state = 'L'
-          buf, i, state = self.literal(fmt, i, depth)
-          output.append(buf)
+          i, state = self.literal(fmt, i, depth, output)
         elif c == '%':
-          if fmt[i] == '%':
-            output.append('%')
-            i += 1
-            continue
-          if compiling and output:
-            compiled.append(lambda t, output=''.join(output): (output, 0))
-            output = []
-          self.log('begin parsing variable at char %s', i, depth=depth)
-          state, start, i = 'V', i, fmt.index('%', i)
-          if compiling:
-            compiled.append(
-                lambda t, self=self, current=fmt[start:i], i=i, depth=depth:
-                  self.handle_var_resolution(t, current, i, depth))
-          else:
-            val, edelta = self.handle_var_resolution(
-                track, fmt[start:i], i, depth)
-            output.append(val)
-            evals += edelta
-            self.log('evaluation count is now %s', evals, depth=depth)
-
-          state, i = None, i + 1
+          state = 'V'
+          i, state, evals = self.variable(
+              track, fmt, i, depth, compiling, compiled, output, evals)
         elif c == '$':
-          if fmt[i] == '$':
-            output.append('$')
-            i += 1
-            continue
-          if compiling and output:
-            compiled.append(lambda t, output=''.join(output): (output, 0))
-            output = []
-          self.log('begin parsing function at char %s', i, depth=depth)
-          state, current, fnoffstart = 'F', '', i + 1
-          while 1:
-            c, i = fmt[i], i + 1
-            if c.isalnum() or c == '_':
-              current += c
-            elif c == '(':
-              self.log(
-                  'parsed function "%s" at char %s', current, i, depth=depth)
-              current_fn, current, state, off = current, '', 'A', i + 1
-              break
-            else:
-              if self.compatible:
-                break
-              raise TitleformatError(
-                  "Illegal token '%s' encountered at char %s" % (c, i))
-          if state != 'A':
-            break
-          while 1:
-            c, start, i = fmt[i], i, i + 1
-            if not recur:
-              if poison:
-                self.log('checking poison state at char %s', i, depth=depth)
-                if c == '(':
-                  argparens += 1
-                  continue
-                if argparens == 0:
-                  if c not in ',)':
-                    continue
-                  else:
-                    self.log('stopped paren poisoning at char %s', i,
-                        depth=depth)
-                    # Resume normal execution and fall through
-                    poison = False
-                elif c == ')':
-                  argparens -= 1
-                  continue
-                else:
-                  continue
-              if argparens == 0:
-                if c == ',':
-                  current, arg = self.parse_fn_arg(track, current_fn,
-                      current, current_argv, c, i, depth,
-                      offset + offstart, memory, compiling)
-                  current_argv.append(arg)
-                  offstart = i + 1
-                  continue
-                elif c == ')':
-                  if current != '' or len(current_argv) > 0:
-                    current, arg = self.parse_fn_arg(track, current_fn,
-                        current, current_argv, c, i, depth,
-                        offset + offstart, memory, compiling)
-                    current_argv.append(arg)
-
-                  self.log(
-                      'finished parsing function arglist at char %s', i,
-                      depth=depth)
-
-                  if compiling:
-                    compiled.append(self.compile_fn_call(
-                      current_fn, current_argv, depth,
-                      offset + fnoffstart))
-                  else:
-                    val, edelta = self.handle_fn_invocation(
-                        track, current_fn, current_argv,
-                        depth, offset + fnoffstart)
-
-                    if val:
-                      output.append(val)
-
-                    evals += edelta
-
-                    self.log('evaluation count is now %s', evals,
-                        depth=depth)
-
-                  current_argv, state = [], 0
-                  break
-              if c == "'":
-                buf, i, state = self.arglist_literal(fmt, i, length, depth)
-                current += buf
-              elif c == '$':
-                self.log(
-                    'stopped evaluation for function in arg at char %s', i,
-                    depth=depth)
-                current += c
-                recur, innerparens = True, 0
-              elif c == '(':
-                argparens += 1
-                if self.compatible:
-                  self.log('detected paren poisoning at char %s', i,
-                      depth=depth)
-                  poison = True
-                  continue
-                else:
-                  current += c
-              #elif c == ')':
-                # I think this isn't possible anymore
-                #argparens -= 1
-                #current += c
-              else:
-                while fmt[i] not in "'$(,)":
-                  i += 1
-                current += fmt[start:i]
-            else: # parsing_function_recursive
-              current += c
-              if c == '(':
-                innerparens += 1
-              elif c == ')':
-                innerparens -= 1
-                if not innerparens:
-                  # Stop skipping evaluation.
-                  self.log('resumed evaluation at char %s', i, depth=depth)
-                  recur = False
-                elif innerparens < 0:
-                  if self.compatible:
-                    self.log(lambda: noncompatible_dbg_msg(
-                      backwards_error(')', '(', offset, i)), depth=depth)
-                    break
-                  else:
-                    raise TitleformatError(backwards_error(')', '(', offset, i))
-          if state:
-            break
+          state = 'F'
+          i, state, evals, offset = self.function(
+              track, fmt, i, depth, compiling, compiled, output, evals,
+              offset, memory)
         elif c == '[':
           if compiling and output:
             compiled.append(lambda t, output=''.join(output): (output, 0))
             output = []
           self.log('begin parsing conditional at char %s', i, depth=depth)
-          state, current, offstart = 'C', '', offstart
+          state, current = 'C', ''
           while 1:
             c, start, i = fmt[i], i, i + 1
             if lit:
@@ -1888,15 +1743,17 @@ class TitleFormatter(object):
 
     return EvaluatorAtom(output, eval_count != 0)
 
-  def literal(self, fmt, i, depth):
+  def literal(self, fmt, i, depth, output):
     if fmt[i] == "'":
-      return "'", i + 1, None
+      output.append("'")
+      return i + 1, None
     self.log('entering literal mode at char %s', i, depth=depth)
     start = i
     while fmt[i] != "'":
       i += 1
     self.log('leaving literal mode at char %s', i, depth=depth)
-    return fmt[start:i], i + 1, None
+    output.append(fmt[start:i])
+    return i + 1, None
 
   def arglist_literal(self, fmt, i, length, depth):
     self.log('entering arglist literal mode at char %s', i, depth=depth)
@@ -1918,7 +1775,161 @@ class TitleFormatter(object):
             state = 'A'
             break
     self.log('leaving arglist literal mode at char %s', i, depth=depth)
-    return (buf, i, state)
+    return buf, i, state
+
+  @staticmethod
+  def flush_compilation(compiling, compiled, output):
+    if compiling and output:
+      compiled.append(lambda t, output=''.join(output): (output, 0))
+      output.clear()
+
+  def variable(self, track, fmt, i, depth, compiling, compiled, output, evals):
+    if fmt[i] == '%':
+      output.append('%')
+      return i + 1, None, evals
+    TitleFormatter.flush_compilation(compiling, compiled, output)
+    self.log('begin parsing variable at char %s', i, depth=depth)
+    start, i = i, fmt.index('%', i)
+    if compiling:
+      compiled.append(
+          lambda t, self=self, current=fmt[start:i], i=i, depth=depth:
+            self.handle_var_resolution(t, current, i, depth))
+    else:
+      val, edelta = self.handle_var_resolution(track, fmt[start:i], i, depth)
+      output.append(val)
+      return i + 1, None, evals + edelta
+    return i + 1, None, evals
+
+  def function(
+      self, track, fmt, i, depth, compiling, compiled, output, evals,
+      offset, memory):
+    if fmt[i] == '$':
+      output.append('$')
+      return i + 1, None, evals, offset
+    TitleFormatter.flush_compilation(compiling, compiled, output)
+    self.log('begin parsing function at char %s', i, depth=depth)
+    (state, current, offstart, foffstart, recur, poison, argparens, innerparens,
+     current_argv) = ('F', '', 0, i + 1, False, False, 0, 0, [])
+    while 1:
+      c, i = fmt[i], i + 1
+      if c.isalnum() or c == '_':
+        current += c
+      elif c == '(':
+        self.log(
+            'parsed function "%s" at char %s', current, i, depth=depth)
+        current_fn, current, state, off = current, '', 'A', i + 1
+        break
+      else:
+        if self.compatible:
+          break
+        raise TitleformatError(
+            "Illegal token '%s' encountered at char %s" % (c, i))
+    if state != 'A':
+      raise IndexError()
+    while 1:
+      c, start, i = fmt[i], i, i + 1
+      if not recur:
+        if poison:
+          self.log('checking poison state at char %s', i, depth=depth)
+          if c == '(':
+            argparens += 1
+            continue
+          if argparens == 0:
+            if c not in ',)':
+              continue
+            else:
+              self.log('stopped paren poisoning at char %s', i,
+                  depth=depth)
+              # Resume normal execution and fall through
+              poison = False
+          elif c == ')':
+            argparens -= 1
+            continue
+          else:
+            continue
+        if argparens == 0:
+          if c == ',':
+            current, arg = self.parse_fn_arg(track, current_fn,
+                current, current_argv, c, i, depth,
+                offset + offstart, memory, compiling)
+            current_argv.append(arg)
+            offstart = i + 1
+            continue
+          elif c == ')':
+            if current != '' or len(current_argv) > 0:
+              current, arg = self.parse_fn_arg(track, current_fn,
+                  current, current_argv, c, i, depth,
+                  offset + offstart, memory, compiling)
+              current_argv.append(arg)
+
+            self.log(
+                'finished parsing function arglist at char %s', i,
+                depth=depth)
+
+            if compiling:
+              compiled.append(self.compile_fn_call(
+                current_fn, current_argv, depth,
+                offset + foffstart))
+            else:
+              val, edelta = self.handle_fn_invocation(
+                  track, current_fn, current_argv, depth, offset + foffstart)
+
+              if val:
+                output.append(val)
+
+              evals += edelta
+
+              self.log('evaluation count is now %s', evals,
+                  depth=depth)
+
+            current_argv, state = [], 0
+            break
+        if c == "'":
+          buf, i, state = self.arglist_literal(fmt, i, len(fmt), depth)
+          current += buf
+        elif c == '$':
+          self.log(
+              'stopped evaluation for function in arg at char %s', i,
+              depth=depth)
+          current += c
+          recur, innerparens = True, 0
+        elif c == '(':
+          argparens += 1
+          if self.compatible:
+            self.log('detected paren poisoning at char %s', i,
+                depth=depth)
+            poison = True
+            continue
+          else:
+            current += c
+        #elif c == ')':
+          # I think this isn't possible anymore
+          #argparens -= 1
+          #current += c
+        else:
+          while fmt[i] not in "'$(,)":
+            i += 1
+          current += fmt[start:i]
+      else: # parsing_function_recursive
+        current += c
+        if c == '(':
+          innerparens += 1
+        elif c == ')':
+          innerparens -= 1
+          if not innerparens:
+            # Stop skipping evaluation.
+            self.log('resumed evaluation at char %s', i, depth=depth)
+            recur = False
+          elif innerparens < 0:
+            if self.compatible:
+              self.log(lambda: noncompatible_dbg_msg(
+                backwards_error(')', '(', offset, i)), depth=depth)
+              break
+            else:
+              raise TitleformatError(backwards_error(')', '(', offset, i))
+    if state:
+      raise IndexError()
+    return i, None, evals, offset
 
   def parse_fn_arg(self, track, current_fn, current, current_argv, c, i,
       depth=0, offset=0, memory={}, compiling=False):
@@ -1942,35 +1953,24 @@ class TitleFormatter(object):
 
     self.log('value is: %s', evaluated_value, depth=depth)
 
-    evaluated_value_str = text_type(evaluated_value)
-
-    if evaluated_value or evaluated_value == '':
-      if evaluated_value is not True:
-        return (evaluated_value_str, 1)
-      return ('', 1)
-    elif evaluated_value is not None and evaluated_value is not False:
-      # This is the case where no evaluation happened but there is still a
-      # string value (that won't output conditionally).
-      return (evaluated_value_str, 0)
-
-    return ('?', 0)
+    return ((str(evaluated_value) if evaluated_value is not True else '', 1)
+            if evaluated_value or evaluated_value == ''
+            # This is the case where no evaluation happened but there is still a
+            # string value (that won't output conditionally).
+            else (str(evaluated_value), 0)
+            if evaluated_value is not None and evaluated_value is not False
+            else ('?', 0))
 
   def resolve_variable(self, track, field, i, depth):
-    if field == '':
-      self.log('output of single percent at char %s', i, depth=depth)
-      return EvaluatorAtom('%', False)
-
-    local_field = field
     if not self.case_sensitive:
-      local_field = field.upper()
-    self.log('parsed variable %s at char %s', local_field, i, depth=depth)
+      field = field.upper()
 
     resolved = None
 
     if not self.magic:
-      resolved = track.get(local_field)
+      resolved = track.get(field)
     else:
-      resolved = self.magic_resolve_variable(track, local_field, depth)
+      resolved = self.magic_resolve_variable(track, field, depth)
 
     if resolved is None or resolved is False:
       return None
