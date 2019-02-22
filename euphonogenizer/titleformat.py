@@ -1614,70 +1614,14 @@ class TitleFormatter(object):
               track, fmt, i, depth, compiling, compiled, output, evals)
         elif c == '$':
           state = 'F'
-          i, state, evals, offset = self.function(
+          i, state, evals, offset, offstart = self.function(
               track, fmt, i, depth, compiling, compiled, output, evals,
-              offset, memory)
+              offset, offstart, memory)
         elif c == '[':
-          if compiling and output:
-            compiled.append(lambda t, output=''.join(output): (output, 0))
-            output = []
-          self.log('begin parsing conditional at char %s', i, depth=depth)
-          state, current = 'C', ''
-          while 1:
-            c, start, i = fmt[i], i, i + 1
-            if lit:
-              current += c
-              if c == "'":
-                self.log('leaving conditional literal mode at char %s', i,
-                    depth=depth)
-                lit = False
-            elif c == '[':
-                self.log(
-                    'found a pending conditional at char %s', i, depth=depth)
-                conds += 1
-                self.log('conditional parse count now %s',
-                    conds, depth=depth)
-                current += c
-            elif c == ']':
-              if conds > 0:
-                self.log('found a terminating conditional at char %s', i,
-                    depth=depth)
-                conds -= 1
-                self.log('conditional parse count now %s at char %s',
-                    conds, i, depth=depth)
-                current += c
-              else:
-                self.log('finished parsing conditional at char %s', i,
-                    depth=depth)
-
-                if compiling:
-                  compiled_cond = self.eval(
-                      None, current, True, depth + 1, offset + offstart,
-                      memory, True)
-                  compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
-                else:
-                  evaluated_value = self.eval(
-                      track, current, True, depth + 1, offset + offstart,
-                      memory)
-
-                  self.log('value is: %s', evaluated_value, depth=depth)
-                  if evaluated_value:
-                    output.append(str(evaluated_value))
-                    evals += 1
-                  self.log('evaluation count is now %s', evals,
-                      depth=depth)
-
-                conds, state = 0, 0
-                break
-            elif c == "'":
-              self.log('entering conditional literal mode at char %s', i,
-                  depth=depth)
-              current += c
-              lit = True
-            else:
-              while fmt[i] not in set(("'", '[', ']')):
-                i += 1
-              current += fmt[start:i]
+          state = 'C'
+          i, state, evals = self.conditional(
+              track, fmt, i, depth, compiling, compiled, output, evals,
+              offset, offstart, memory)
         elif c == ']':
           if self.compatible:
             self.log(lambda: noncompatible_dbg_msg(
@@ -1697,9 +1641,8 @@ class TitleFormatter(object):
               i += 1
           finally:
             output.append(fmt[start:i])
-    except IndexError:
-      pass
-    except ValueError:
+    except (IndexError, ValueError) as e:
+      self.log('Caught %s, ignoring: %s', e.__class__.__name__, e)
       pass
 
     # At this point, we have reached the end of the input.
@@ -1802,14 +1745,14 @@ class TitleFormatter(object):
 
   def function(
       self, track, fmt, i, depth, compiling, compiled, output, evals,
-      offset, memory):
+      offset, offstart, memory):
     if fmt[i] == '$':
       output.append('$')
-      return i + 1, None, evals, offset
+      return i + 1, None, evals, offset, offstart
     TitleFormatter.flush_compilation(compiling, compiled, output)
     self.log('begin parsing function at char %s', i, depth=depth)
-    (state, current, offstart, foffstart, recur, poison, argparens, innerparens,
-     current_argv) = ('F', '', 0, i + 1, False, False, 0, 0, [])
+    (state, current, foffstart, recur, poison, argparens, innerparens,
+     current_argv) = ('F', '', i + 1, False, False, 0, 0, [])
     while 1:
       c, i = fmt[i], i + 1
       if c.isalnum() or c == '_':
@@ -1929,7 +1872,68 @@ class TitleFormatter(object):
               raise TitleformatError(backwards_error(')', '(', offset, i))
     if state:
       raise IndexError()
-    return i, None, evals, offset
+    return i, None, evals, offset, offstart
+
+  def conditional(
+      self, track, fmt, i, depth, compiling, compiled, output, evals,
+      offset, offstart, memory):
+    TitleFormatter.flush_compilation(compiling, compiled, output)
+    self.log('begin parsing conditional at char %s', i, depth=depth)
+    current, lit, conds = '', False, 0
+    while 1:
+      c, start, i = fmt[i], i, i + 1
+      if lit:
+        current += c
+        if c == "'":
+          self.log('leaving conditional literal mode at char %s', i,
+              depth=depth)
+          lit = False
+      elif c == '[':
+          self.log(
+              'found a pending conditional at char %s', i, depth=depth)
+          conds += 1
+          self.log('conditional parse count now %s',
+              conds, depth=depth)
+          current += c
+      elif c == ']':
+        if conds > 0:
+          self.log('found a terminating conditional at char %s', i,
+              depth=depth)
+          conds -= 1
+          self.log('conditional parse count now %s at char %s',
+              conds, i, depth=depth)
+          current += c
+        else:
+          self.log('finished parsing conditional at char %s', i,
+              depth=depth)
+
+          if compiling:
+            compiled_cond = self.eval(
+                None, current, True, depth + 1, offset + offstart,
+                memory, True)
+            compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
+          else:
+            evaluated_value = self.eval(
+                track, current, True, depth + 1, offset + offstart,
+                memory)
+
+            self.log('value is: %s', evaluated_value, depth=depth)
+            if evaluated_value:
+              output.append(str(evaluated_value))
+              evals += 1
+            self.log('evaluation count is now %s', evals,
+                depth=depth)
+
+          return i, None, evals
+      elif c == "'":
+        self.log('entering conditional literal mode at char %s', i,
+            depth=depth)
+        current += c
+        lit = True
+      else:
+        while fmt[i] not in set(("'", '[', ']')):
+          i += 1
+        current += fmt[start:i]
 
   def parse_fn_arg(self, track, current_fn, current, current_argv, c, i,
       depth=0, offset=0, memory={}, compiling=False):
