@@ -1555,15 +1555,15 @@ def unterminated_error(token, expected, offset, i):
 
 
 state_errors = {
-    'L': lambda o, i: unterminated_error('literal', "'", o, i),
-    'V': lambda o, i: unterminated_error('variable', "%", o, i),
-    'F': lambda o, i: unterminated_error('function', "(", o, i),
-    'A': lambda o, i: unterminated_error('function call', ")", o, i),
-    'C': lambda o, i: unterminated_error('conditional', "]", o, i),
+    "'": lambda o, i: unterminated_error('literal', "'", o, i),
+    '%': lambda o, i: unterminated_error('variable', "%", o, i),
+    '$': lambda o, i: unterminated_error('function', "(", o, i),
+    '[': lambda o, i: unterminated_error('conditional', "]", o, i),
 }
 
 
 default_ccache = {}
+next_token = re.compile(r"['%$\[\]()]")
 
 
 class TitleFormatter(object):
@@ -1591,7 +1591,7 @@ class TitleFormatter(object):
     if fmt in self.ccache:
       return self.ccache[fmt] if compiling else self.ccache[fmt](track)
 
-    state, lit, conds, evals, output, compiled, i = None, False, 0, 0, [], [], 0
+    lit, conds, evals, output, compiled, i = False, 0, 0, [], [], 0
     offstart = 0
 
     self.log('fresh call to eval(); format="%s" offset=%s',
@@ -1606,20 +1606,16 @@ class TitleFormatter(object):
       while 1:
         c, i = fmt[i], i + 1
         if c == "'":
-          state = 'L'
-          i, state = self.literal(fmt, i, depth, output)
+          i = self.literal(fmt, i, depth, output)
         elif c == '%':
-          state = 'V'
-          i, state, evals = self.variable(
+          i, evals = self.variable(
               track, fmt, i, depth, compiling, compiled, output, evals)
         elif c == '$':
-          state = 'F'
-          i, state, evals, offset, offstart = self.function(
+          i, evals, offset, offstart = self.function(
               track, fmt, i, depth, compiling, compiled, output, evals,
               offset, offstart, memory)
         elif c == '[':
-          state = 'C'
-          i, state, evals = self.conditional(
+          i, evals = self.conditional(
               track, fmt, i, depth, compiling, compiled, output, evals,
               offset, offstart, memory)
         elif c == ']':
@@ -1635,22 +1631,25 @@ class TitleFormatter(object):
           # paren floating around in the input.
           break
         else:
-          start = i - 1
-          try:
-            while fmt[i] not in "'%$[]()":
-              i += 1
-          finally:
-            output.append(fmt[start:i])
-    except (IndexError, ValueError) as e:
+          rest = fmt[i-1:]
+          match = next_token.search(rest)
+          if match:
+            output.append(rest[:match.end() - 1])
+            i += match.end() - 2
+          else:
+            i = len(fmt)
+            output.append(rest)
+            break
+    except (IndexError, ValueError, StopIteration) as e:
       self.log('Caught %s, ignoring: %s', e.__class__.__name__, e)
       pass
 
     # At this point, we have reached the end of the input.
-    if state:
+    if i < len(fmt):
       if self.compatible:
-        self.log(lambda: state_errors[state[0]](offset, i), depth=depth)
+        self.log(lambda: state_errors[c](offset, i), depth=depth)
       else:
-        raise TitleformatError(state_errors[state[0]](offset, i))
+        raise TitleformatError(state_errors[c](offset, i))
 
     if compiling:
       if len(output) > 0:
@@ -1689,36 +1688,14 @@ class TitleFormatter(object):
   def literal(self, fmt, i, depth, output):
     if fmt[i] == "'":
       output.append("'")
-      return i + 1, None
+      return i + 1
     self.log('entering literal mode at char %s', i, depth=depth)
     start = i
     while fmt[i] != "'":
       i += 1
     self.log('leaving literal mode at char %s', i, depth=depth)
     output.append(fmt[start:i])
-    return i + 1, None
-
-  def arglist_literal(self, fmt, i, length, depth):
-    self.log('entering arglist literal mode at char %s', i, depth=depth)
-    state = 'AL'
-    buf = "'"
-    if i < length:
-      c = fmt[i]
-      i += 1
-      if c == "'" and buf == "'":
-        buf = "''"
-        state = 'A'
-      else:
-        while i < length:
-          buf += c
-          c = fmt[i]
-          i += 1
-          if c == "'":
-            buf += "'"
-            state = 'A'
-            break
-    self.log('leaving arglist literal mode at char %s', i, depth=depth)
-    return buf, i, state
+    return i + 1
 
   @staticmethod
   def flush_compilation(compiling, compiled, output):
@@ -1729,7 +1706,7 @@ class TitleFormatter(object):
   def variable(self, track, fmt, i, depth, compiling, compiled, output, evals):
     if fmt[i] == '%':
       output.append('%')
-      return i + 1, None, evals
+      return i + 1, evals
     TitleFormatter.flush_compilation(compiling, compiled, output)
     self.log('begin parsing variable at char %s', i, depth=depth)
     start, i = i, fmt.index('%', i)
@@ -1740,19 +1717,19 @@ class TitleFormatter(object):
     else:
       val, edelta = self.handle_var_resolution(track, fmt[start:i], i, depth)
       output.append(val)
-      return i + 1, None, evals + edelta
-    return i + 1, None, evals
+      return i + 1, evals + edelta
+    return i + 1, evals
 
   def function(
       self, track, fmt, i, depth, compiling, compiled, output, evals,
       offset, offstart, memory):
     if fmt[i] == '$':
       output.append('$')
-      return i + 1, None, evals, offset, offstart
+      return i + 1, evals, offset, offstart
     TitleFormatter.flush_compilation(compiling, compiled, output)
     self.log('begin parsing function at char %s', i, depth=depth)
-    (state, current, foffstart, recur, poison, argparens, innerparens,
-     current_argv) = ('F', '', i + 1, False, False, 0, 0, [])
+    state, current, foffstart, argparens, innerparens, current_argv = (
+        0x0, '', i + 1, 0, 0, [])
     while 1:
       c, i = fmt[i], i + 1
       if c.isalnum() or c == '_':
@@ -1760,19 +1737,19 @@ class TitleFormatter(object):
       elif c == '(':
         self.log(
             'parsed function "%s" at char %s', current, i, depth=depth)
-        current_fn, current, state, off = current, '', 'A', i + 1
+        current_fn, current, state, off = current, '', 0x1, i + 1
         break
       else:
         if self.compatible:
           break
         raise TitleformatError(
             "Illegal token '%s' encountered at char %s" % (c, i))
-    if state != 'A':
-      raise IndexError()
+    if not state:
+      raise StopIteration()
     while 1:
       c, start, i = fmt[i], i, i + 1
-      if not recur:
-        if poison:
+      if not state & 0x2:  # parsing recursively -- inner function
+        if state & 0x4:  # paren poisoning
           self.log('checking poison state at char %s', i, depth=depth)
           if c == '(':
             argparens += 1
@@ -1784,7 +1761,7 @@ class TitleFormatter(object):
               self.log('stopped paren poisoning at char %s', i,
                   depth=depth)
               # Resume normal execution and fall through
-              poison = False
+              state &= ~0x4  # turn off paren poisoning bitflag
           elif c == ')':
             argparens -= 1
             continue
@@ -1825,23 +1802,23 @@ class TitleFormatter(object):
               self.log('evaluation count is now %s', evals,
                   depth=depth)
 
-            current_argv, state = [], 0
+            current_argv, state = [], 0x0
             break
         if c == "'":
-          buf, i, state = self.arglist_literal(fmt, i, len(fmt), depth)
-          current += buf
+          start, i = i, fmt.index("'", i) + 1
+          current += f"'{fmt[start:i]}"
         elif c == '$':
           self.log(
               'stopped evaluation for function in arg at char %s', i,
               depth=depth)
           current += c
-          recur, innerparens = True, 0
+          state, innerparens = state | 0x2, 0  # 0x2 is the recur bitflag
         elif c == '(':
           argparens += 1
           if self.compatible:
             self.log('detected paren poisoning at char %s', i,
                 depth=depth)
-            poison = True
+            state |= 0x4  #  paren poisoning bitflag
             continue
           else:
             current += c
@@ -1862,7 +1839,7 @@ class TitleFormatter(object):
           if not innerparens:
             # Stop skipping evaluation.
             self.log('resumed evaluation at char %s', i, depth=depth)
-            recur = False
+            state &= ~0x2
           elif innerparens < 0:
             if self.compatible:
               self.log(lambda: noncompatible_dbg_msg(
@@ -1871,8 +1848,8 @@ class TitleFormatter(object):
             else:
               raise TitleformatError(backwards_error(')', '(', offset, i))
     if state:
-      raise IndexError()
-    return i, None, evals, offset, offstart
+      raise StopIteration()
+    return i, evals, offset, offstart
 
   def conditional(
       self, track, fmt, i, depth, compiling, compiled, output, evals,
@@ -1924,7 +1901,7 @@ class TitleFormatter(object):
             self.log('evaluation count is now %s', evals,
                 depth=depth)
 
-          return i, None, evals
+          return i, evals
       elif c == "'":
         self.log('entering conditional literal mode at char %s', i,
             depth=depth)
