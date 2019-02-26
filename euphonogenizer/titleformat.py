@@ -1606,7 +1606,12 @@ class TitleFormatter(object):
       while 1:
         c, i = fmt[i], i + 1
         if c == "'":
-          i = self.literal(fmt, i, depth, output)
+          if fmt[i] == "'":
+            output.append("'")
+            i += 1
+            continue
+          start, i = i, fmt.index("'", i) + 1
+          output.append(fmt[start:i-1])
         elif c == '%':
           i, evals = self.variable(
               track, fmt, i, depth, compiling, compiled, output, evals)
