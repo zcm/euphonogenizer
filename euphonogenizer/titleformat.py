@@ -1591,7 +1591,7 @@ class TitleFormatter(object):
     if fmt in self.ccache:
       return self.ccache[fmt] if compiling else self.ccache[fmt](track)
 
-    lit, conds, evals, output, compiled, i = False, 0, 0, [], [], 0
+    lit, conds, evals, output, compiled, i, ss = False, 0, 0, [], [], 0, 0
     offstart = 0
 
     self.log('fresh call to eval(); format="%s" offset=%s',
@@ -1607,22 +1607,34 @@ class TitleFormatter(object):
         c, i = fmt[i], i + 1
         if c == "'":
           if fmt[i] == "'":
-            output.append("'")
-            i += 1
+            ss = 1
+            i += 1  # Fall through
+          else:
+            start, i = i, fmt.index("'", i) + 1
+            output.append(fmt[start:i-1])
             continue
-          start, i = i, fmt.index("'", i) + 1
-          output.append(fmt[start:i-1])
         elif c == '%':
-          i, evals = self.variable(
-              track, fmt, i, depth, compiling, compiled, output, evals)
+          if fmt[i] == '%':
+            ss = 1
+            i += 1  # Fall through
+          else:
+            i, evals = self.variable(
+                track, fmt, i, depth, compiling, compiled, output, evals)
+            continue
         elif c == '$':
-          i, evals, offset, offstart = self.function(
-              track, fmt, i, depth, compiling, compiled, output, evals,
-              offset, offstart, memory)
+          if fmt[i] == '$':
+            ss = 1
+            i += 1  # Fall through
+          else:
+            i, evals, offset, offstart = self.function(
+                track, fmt, i, depth, compiling, compiled, output, evals,
+                offset, offstart, memory)
+            continue
         elif c == '[':
           i, evals = self.conditional(
               track, fmt, i, depth, compiling, compiled, output, evals,
               offset, offstart, memory)
+          continue
         elif c == ']':
           if self.compatible:
             self.log(lambda: noncompatible_dbg_msg(
@@ -1635,16 +1647,16 @@ class TitleFormatter(object):
           # of a function call, but foobar will just explode if it sees a lone
           # paren floating around in the input.
           break
+        rest = fmt[i-1:]
+        match = next_token.search(rest, ss)
+        if match:
+          output.append(rest[:match.end() - 1])
+          ss = 0
+          i += match.end() - 2
         else:
-          rest = fmt[i-1:]
-          match = next_token.search(rest)
-          if match:
-            output.append(rest[:match.end() - 1])
-            i += match.end() - 2
-          else:
-            i = len(fmt)
-            output.append(rest)
-            break
+          i = len(fmt)
+          output.append(rest)
+          break
     except (IndexError, ValueError, StopIteration) as e:
       self.log('Caught %s, ignoring: %s', e.__class__.__name__, e)
       pass
@@ -1690,18 +1702,6 @@ class TitleFormatter(object):
 
     return EvaluatorAtom(output, eval_count != 0)
 
-  def literal(self, fmt, i, depth, output):
-    if fmt[i] == "'":
-      output.append("'")
-      return i + 1
-    self.log('entering literal mode at char %s', i, depth=depth)
-    start = i
-    while fmt[i] != "'":
-      i += 1
-    self.log('leaving literal mode at char %s', i, depth=depth)
-    output.append(fmt[start:i])
-    return i + 1
-
   @staticmethod
   def flush_compilation(compiling, compiled, output):
     if compiling and output:
@@ -1709,9 +1709,6 @@ class TitleFormatter(object):
       output.clear()
 
   def variable(self, track, fmt, i, depth, compiling, compiled, output, evals):
-    if fmt[i] == '%':
-      output.append('%')
-      return i + 1, evals
     TitleFormatter.flush_compilation(compiling, compiled, output)
     self.log('begin parsing variable at char %s', i, depth=depth)
     start, i = i, fmt.index('%', i)
@@ -1728,9 +1725,6 @@ class TitleFormatter(object):
   def function(
       self, track, fmt, i, depth, compiling, compiled, output, evals,
       offset, offstart, memory):
-    if fmt[i] == '$':
-      output.append('$')
-      return i + 1, evals, offset, offstart
     TitleFormatter.flush_compilation(compiling, compiled, output)
     self.log('begin parsing function at char %s', i, depth=depth)
     state, current, foffstart, argparens, innerparens, current_argv = (
