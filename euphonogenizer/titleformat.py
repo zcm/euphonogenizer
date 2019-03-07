@@ -1564,6 +1564,7 @@ state_errors = {
 
 default_ccache = {}
 next_token = re.compile(r"['%$\[\]()]")
+next_inner_token = re.compile(r"['$(,)]")
 
 
 class TitleFormatter(object):
@@ -1724,37 +1725,27 @@ class TitleFormatter(object):
       compiled.append(lambda t, output=''.join(output): (output, 0))
       output.clear()
 
-  def variable(self, track, fmt, i, depth, compiling, compiled, output, evals):
-    if compiling and output:
-      compiled.append(lambda t, output=''.join(output): (output, 0))
-      output.clear()
-    self.log('begin parsing variable at char %s', i, depth=depth)
-    start, i = i, fmt.index('%', i)
-    if compiling:
-      compiled.append(
-          lambda t, self=self, current=fmt[start:i], i=i, depth=depth:
-            self.handle_var_resolution(t, current, i, depth))
-    else:
-      val, edelta = self.handle_var_resolution(track, fmt[start:i], i, depth)
-      output.append(val)
-      return i + 1, evals + edelta
-    return i + 1, evals
-
   def function(
       self, track, fmt, i, depth, compiling, compiled, output, evals,
       offset, offstart, memory):
-    TitleFormatter.flush_compilation(compiling, compiled, output)
+    if compiling and output:
+      compiled.append(lambda t, output=''.join(output): (output, 0))
+      output.clear()
     self.log('begin parsing function at char %s', i, depth=depth)
-    state, current, foffstart, argparens, innerparens, current_argv = (
-        0x0, '', i + 1, 0, 0, [])
+    state, current, argparens, innerparens = 0x0, '', 0, 0
+    foffstart = i + 1
+    current_argv = []
     while 1:
-      c, i = fmt[i], i + 1
+      c = fmt[i]
+      i += 1
       if c.isalnum() or c == '_':
         current += c
       elif c == '(':
         self.log(
             'parsed function "%s" at char %s', current, i, depth=depth)
-        current_fn, current, state, off = current, '', 0x1, i + 1
+        current_fn = current
+        current, state = '', 0x1
+        off = i + 1
         break
       else:
         if self.compatible:
@@ -1764,106 +1755,106 @@ class TitleFormatter(object):
     if not state:
       raise StopIteration()
     while 1:
-      c, start, i = fmt[i], i, i + 1
-      if not state & 0x2:  # parsing recursively -- inner function
-        if state & 0x4:  # paren poisoning
-          self.log('checking poison state at char %s', i, depth=depth)
-          if c == '(':
-            argparens += 1
-            continue
-          if argparens == 0:
-            if c not in ',)':
-              continue
-            else:
-              self.log('stopped paren poisoning at char %s', i,
-                  depth=depth)
-              # Resume normal execution and fall through
-              state &= ~0x4  # turn off paren poisoning bitflag
-          elif c == ')':
-            argparens -= 1
-            continue
-          else:
-            continue
-        if argparens == 0:
-          if c == ',':
+      c = fmt[i]
+      i += 1
+      if not argparens:
+        if c == ',':
+          current, arg = self.parse_fn_arg(track, current_fn,
+              current, current_argv, c, i, depth,
+              offset + offstart, memory, compiling)
+          current_argv.append(arg)
+          offstart = i + 1
+          continue
+        elif c == ')':
+          if current != '' or len(current_argv) > 0:
             current, arg = self.parse_fn_arg(track, current_fn,
                 current, current_argv, c, i, depth,
                 offset + offstart, memory, compiling)
             current_argv.append(arg)
-            offstart = i + 1
-            continue
-          elif c == ')':
-            if current != '' or len(current_argv) > 0:
-              current, arg = self.parse_fn_arg(track, current_fn,
-                  current, current_argv, c, i, depth,
-                  offset + offstart, memory, compiling)
-              current_argv.append(arg)
 
-            self.log(
-                'finished parsing function arglist at char %s', i,
-                depth=depth)
-
-            if compiling:
-              compiled.append(self.compile_fn_call(
-                current_fn, current_argv, depth,
-                offset + foffstart))
-            else:
-              val, edelta = self.handle_fn_invocation(
-                  track, current_fn, current_argv, depth, offset + foffstart)
-
-              if val:
-                output.append(val)
-
-              evals += edelta
-
-              self.log('evaluation count is now %s', evals,
-                  depth=depth)
-
-            current_argv, state = [], 0x0
-            break
-        if c == "'":
-          start, i = i, fmt.index("'", i) + 1
-          current += f"'{fmt[start:i]}"
-        elif c == '$':
           self.log(
-              'stopped evaluation for function in arg at char %s', i,
+              'finished parsing function arglist at char %s', i,
               depth=depth)
-          current += c
-          state, innerparens = state | 0x2, 0  # 0x2 is the recur bitflag
-        elif c == '(':
-          argparens += 1
-          if self.compatible:
-            self.log('detected paren poisoning at char %s', i,
-                depth=depth)
-            state |= 0x4  #  paren poisoning bitflag
-            continue
+
+          if compiling:
+            compiled.append(self.compile_fn_call(
+              current_fn, current_argv, depth,
+              offset + foffstart))
           else:
-            current += c
-        #elif c == ')':
-          # I think this isn't possible anymore
-          #argparens -= 1
-          #current += c
-        else:
-          while fmt[i] not in "'$(,)":
-            i += 1
-          current += fmt[start:i]
-      else: # parsing_function_recursive
+            val, edelta = self.handle_fn_invocation(
+                track, current_fn, current_argv, depth, offset + foffstart)
+
+            if val:
+              output.append(val)
+
+            evals += edelta
+
+            self.log('evaluation count is now %s', evals,
+                depth=depth)
+
+          state = 0x0
+          break
+      if c == "'":
+        start = i
+        i = fmt.index("'", i) + 1
+        current += fmt[start-1:i]
+      elif c == '$':
+        self.log(
+            'stopped evaluation for function in arg at char %s', i,
+            depth=depth)
         current += c
-        if c == '(':
-          innerparens += 1
-        elif c == ')':
-          innerparens -= 1
-          if not innerparens:
-            # Stop skipping evaluation.
-            self.log('resumed evaluation at char %s', i, depth=depth)
-            state &= ~0x2
-          elif innerparens < 0:
-            if self.compatible:
-              self.log(lambda: noncompatible_dbg_msg(
-                backwards_error(')', '(', offset, i)), depth=depth)
+        innerparens = 0
+        while 1:  # Parse the nested function
+          c = fmt[i]
+          i += 1
+          current += c
+          if c == '(':
+            innerparens += 1
+          elif c == ')':
+            innerparens -= 1
+            if not innerparens:
+              # Stop skipping evaluation.
+              self.log('resumed evaluation at char %s', i, depth=depth)
               break
-            else:
-              raise TitleformatError(backwards_error(')', '(', offset, i))
+            elif innerparens < 0:
+              if self.compatible:
+                self.log(lambda: noncompatible_dbg_msg(
+                  backwards_error(')', '(', offset, i)), depth=depth)
+                raise StopIteration()
+              else:
+                raise TitleformatError(backwards_error(')', '(', offset, i))
+      elif c == '(':
+        argparens += 1
+        self.log('detected paren poisoning at char %s', i,
+            depth=depth)
+        while 1:  # Paren poisoning
+          c = fmt[i]
+          if c == '(':
+            argparens += 1
+          elif not argparens:
+            if c in ',)':
+              self.log('stopped paren poisoning at char %s', i,
+                  depth=depth)
+              # Resume normal execution
+              break
+          elif c == ')':
+            argparens -= 1
+          i += 1  # Only need to do this if we're not actually breaking
+      #elif c == ')':
+        # I think this isn't possible anymore
+        #argparens -= 1
+        #current += c
+      else:
+        start = i - 1
+        while fmt[i] not in "'$(,)":
+          i += 1
+        current += fmt[start:i]
+        # I need to understand why the match implementation is not faster
+        #match = next_inner_token.search(fmt, i)
+        #if not match:
+          #raise StopIteration()
+        #i = match.start()
+        #current += fmt[match.pos-1:i]
     if state:
       raise StopIteration()
     return i, evals, offset, offstart
