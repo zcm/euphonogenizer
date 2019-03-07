@@ -1621,8 +1621,21 @@ class TitleFormatter(object):
             ss = 1
             i += 1  # Fall through
           else:
-            i, evals = self.variable(
-                track, fmt, i, depth, compiling, compiled, output, evals)
+            if compiling and output:
+              compiled.append(lambda t, output=''.join(output): (output, 0))
+              output.clear()
+            self.log('begin parsing variable at char %s', i, depth=depth)
+            start = i
+            i = fmt.index('%', i)
+            if compiling:
+              compiled.append(
+                  lambda t, self=self, current=fmt[start:i], i=i, depth=depth:
+                    self.handle_var_resolution(t, current, i, depth))
+            else:
+              val, edelta = self.handle_var_resolution(track, fmt[start:i], i, depth)
+              output.append(val)
+              evals += edelta
+            i += 1
             continue
         elif c == '$':
           if fmt[i] == '$':
@@ -1712,7 +1725,9 @@ class TitleFormatter(object):
       output.clear()
 
   def variable(self, track, fmt, i, depth, compiling, compiled, output, evals):
-    TitleFormatter.flush_compilation(compiling, compiled, output)
+    if compiling and output:
+      compiled.append(lambda t, output=''.join(output): (output, 0))
+      output.clear()
     self.log('begin parsing variable at char %s', i, depth=depth)
     start, i = i, fmt.index('%', i)
     if compiling:
