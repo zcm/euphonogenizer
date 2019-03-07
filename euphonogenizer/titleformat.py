@@ -1591,8 +1591,9 @@ class TitleFormatter(object):
     if fmt in self.ccache:
       return self.ccache[fmt] if compiling else self.ccache[fmt](track)
 
-    lit, conds, evals, output, compiled, i, ss = False, 0, 0, [], [], 0, 0
-    offstart = 0
+    lit, conds, evals, i, ss, offstart = False, 0, 0, 0, 0, 0
+    output = []
+    compiled = []
 
     self.log('fresh call to eval(); format="%s" offset=%s',
         fmt, offset, depth=depth)
@@ -1604,13 +1605,15 @@ class TitleFormatter(object):
 
     try:
       while 1:
-        c, i = fmt[i], i + 1
+        c = fmt[i]
+        i += 1
         if c == "'":
           if fmt[i] == "'":
             ss = 1
             i += 1  # Fall through
           else:
-            start, i = i, fmt.index("'", i) + 1
+            start = i
+            i = fmt.index("'", i) + 1
             output.append(fmt[start:i-1])
             continue
         elif c == '%':
@@ -1669,7 +1672,7 @@ class TitleFormatter(object):
         raise TitleformatError(state_errors[c](offset, i))
 
     if compiling:
-      if len(output) > 0:
+      if output:
         # We need to flush the output buffer to a lambda once more
         compiled.append(lambda t, output=''.join(output): (output, 0))
       self.log('eval() compiled the input into %s blocks', len(compiled),
@@ -1680,7 +1683,7 @@ class TitleFormatter(object):
 
     output = ''.join(output)
 
-    if depth == 0 and self.for_filename:
+    if not depth and self.for_filename:
       output = foobar_filename_escape(output)
 
     result = EvaluatorAtom(output, bool(evals))
