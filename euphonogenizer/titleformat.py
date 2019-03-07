@@ -1592,7 +1592,7 @@ class TitleFormatter(object):
     if fmt in self.ccache:
       return self.ccache[fmt] if compiling else self.ccache[fmt](track)
 
-    lit, conds, evals, i, ss, offstart = False, 0, 0, 0, 0, 0
+    lit, conds, evals, i, soff, offstart = False, 0, 0, 0, -1, 0
     output = []
     compiled = []
 
@@ -1610,7 +1610,7 @@ class TitleFormatter(object):
         i += 1
         if c == "'":
           if fmt[i] == "'":
-            ss = 1
+            soff = 0
             i += 1  # Fall through
           else:
             start = i
@@ -1619,7 +1619,7 @@ class TitleFormatter(object):
             continue
         elif c == '%':
           if fmt[i] == '%':
-            ss = 1
+            soff = 0
             i += 1  # Fall through
           else:
             if compiling and output:
@@ -1640,7 +1640,7 @@ class TitleFormatter(object):
             continue
         elif c == '$':
           if fmt[i] == '$':
-            ss = 1
+            soff = 0
             i += 1  # Fall through
           else:
             i, evals, offset, offstart = self.function(
@@ -1664,15 +1664,14 @@ class TitleFormatter(object):
           # of a function call, but foobar will just explode if it sees a lone
           # paren floating around in the input.
           break
-        rest = fmt[i-1:]
-        match = next_token.search(rest, ss)
+        match = next_token.search(fmt, i + soff)
         if match:
-          output.append(rest[:match.end() - 1])
-          ss = 0
-          i += match.end() - 2
+          output.append(fmt[i-1:match.start()])
+          soff = -1
+          i = match.start()
         else:
+          output.append(fmt[i-1:])
           i = len(fmt)
-          output.append(rest)
           break
     except (IndexError, ValueError, StopIteration) as e:
       self.log('Caught %s, ignoring: %s', e.__class__.__name__, e)
