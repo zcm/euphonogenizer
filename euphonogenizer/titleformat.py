@@ -1565,6 +1565,7 @@ state_errors = {
 default_ccache = {}
 next_token = re.compile(r"['%$\[\]()]")
 next_inner_token = re.compile(r"['$(,)]")
+next_paren_token = re.compile(r"[(')]")
 
 
 class TitleFormatter(object):
@@ -1803,22 +1804,24 @@ class TitleFormatter(object):
         self.log(
             'stopped evaluation for function in arg at char %s', i,
             depth=depth)
-        current.append(c)
+        start = i
         innerparens = 0
+        it = next_paren_token.finditer(fmt[i:])
         while 1:  # Parse the nested function
-          c = fmt[i]
-          i += 1
-          current.append(c)
-          if c == "'":
-            start = i
-            i = fmt.index("'", i) + 1
-            current.append(fmt[start:i])
-          elif c == '(':
+          match = next(it)
+          c = match.group()
+          if c == '(':
             innerparens += 1
+          elif c == "'":
+            match = next(it)
+            while match.group() != "'":
+              match = next(it)
           elif c == ')':
             innerparens -= 1
             if not innerparens:
               # Stop skipping evaluation.
+              i += match.end()
+              current.append(fmt[start-1:i])
               self.log('resumed evaluation at char %s', i, depth=depth)
               break
             elif innerparens < 0:
