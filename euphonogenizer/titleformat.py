@@ -1673,7 +1673,7 @@ class TitleFormatter(object):
           output.append(fmt[i-1:])
           i = len(fmt)
           break
-    except (IndexError, ValueError, StopIteration) as e:
+    except (IndexError, ValueError, AttributeError, StopIteration) as e:
       self.log('Caught %s, ignoring: %s', e.__class__.__name__, e)
       pass
 
@@ -1731,19 +1731,21 @@ class TitleFormatter(object):
       compiled.append(lambda t, output=''.join(output): (output, 0))
       output.clear()
     self.log('begin parsing function at char %s', i, depth=depth)
-    state, current, argparens, innerparens = 0x0, '', 0, 0
+    state, argparens, innerparens = 0x0, 0, 0
     foffstart = i + 1
+    current = []
     current_argv = []
     while 1:
       c = fmt[i]
       i += 1
       if c.isalnum() or c == '_':
-        current += c
+        current.append(c)
       elif c == '(':
+        current_fn = ''.join(current)
         self.log(
-            'parsed function "%s" at char %s', current, i, depth=depth)
-        current_fn = current
-        current, state = '', 0x1
+            'parsed function "%s" at char %s', current_fn, i, depth=depth)
+        current.clear()
+        state = 0x1
         off = i + 1
         break
       else:
@@ -1758,18 +1760,18 @@ class TitleFormatter(object):
       i += 1
       if not argparens:
         if c == ',':
-          current, arg = self.parse_fn_arg(track, current_fn,
-              current, current_argv, c, i, depth,
-              offset + offstart, memory, compiling)
-          current_argv.append(arg)
+          current_argv.append(self.parse_fn_arg(
+              track, current_fn, current, current_argv, c, i, depth,
+              offset + offstart, memory, compiling))
+          current.clear()
           offstart = i + 1
           continue
         elif c == ')':
-          if current != '' or len(current_argv) > 0:
-            current, arg = self.parse_fn_arg(track, current_fn,
-                current, current_argv, c, i, depth,
-                offset + offstart, memory, compiling)
-            current_argv.append(arg)
+          if current or current_argv:
+            current_argv.append(self.parse_fn_arg(
+                track, current_fn, current, current_argv, c, i, depth,
+                offset + offstart, memory, compiling))
+            current.clear()
 
           self.log(
               'finished parsing function arglist at char %s', i,
@@ -1796,17 +1798,17 @@ class TitleFormatter(object):
       if c == "'":
         start = i
         i = fmt.index("'", i) + 1
-        current += fmt[start-1:i]
+        current.append(fmt[start-1:i])
       elif c == '$':
         self.log(
             'stopped evaluation for function in arg at char %s', i,
             depth=depth)
-        current += c
+        current.append(c)
         innerparens = 0
         while 1:  # Parse the nested function
           c = fmt[i]
           i += 1
-          current += c
+          current.append(c)
           if c == '(':
             innerparens += 1
           elif c == ')':
@@ -1842,18 +1844,22 @@ class TitleFormatter(object):
       #elif c == ')':
         # I think this isn't possible anymore
         #argparens -= 1
-        #current += c
+        #current.append(c)
       else:
-        start = i - 1
-        while fmt[i] not in "'$(,)":
-          i += 1
-        current += fmt[start:i]
-        # I need to understand why the match implementation is not faster
-        #match = next_inner_token.search(fmt, i)
-        #if not match:
-          #raise StopIteration()
-        #i = match.start()
-        #current += fmt[match.pos-1:i]
+        # This is a critical section. I've tried the following approaches and
+        # benchmarked them to find the fastest ones:
+        #     1. Regular expression match groups (this one)
+        #     2. Increment the index counter until you find it
+        #     3. Use next() with a comprehension to assign the index counter
+        #     4. Use min() and str.find() to find the lowest index
+        #     5. Reduce min() over a map of a sliced fmt with a filter
+        # #1 is overall very good and asymptotically the fastest. #2 is faster
+        # for very short sequences by about 4%, making it better for the unit
+        # tests, but overall not worth it. Everything else just performs worse
+        # somehow in the formatter, even if it benchmarks well outside it.
+        match = next_inner_token.search(fmt, i)
+        i = match.start()  # Don't check, just let this raise AttributeError!
+        current.append(fmt[match.pos-1:i])
     if state:
       raise StopIteration()
     return i, evals, offset, offstart
@@ -1921,20 +1927,17 @@ class TitleFormatter(object):
 
   def parse_fn_arg(self, track, current_fn, current, current_argv, c, i,
       depth=0, offset=0, memory={}, compiling=False):
-    next_current = ''
-
+    current = ''.join(current)
     self.log('finished argument %s for function "%s" at char %s: %s',
         len(current_argv), current_fn, i, current, depth=depth)
 
     if compiling:
-      lazy = LazyCompilation(
+      return LazyCompilation(
           self, current, False, depth + 1, offset, memory, self.log)
-      return (next_current, lazy)
 
     # The lazy expression will parse the current buffer if it's ever needed.
-    lazy = LazyExpression(
+    return LazyExpression(
         self, track, current, False, depth + 1, offset, memory)
-    return (next_current, lazy)
 
   def handle_var_resolution(self, track, field, i, depth):
     evaluated_value = self.resolve_variable(track, field, i, depth)
