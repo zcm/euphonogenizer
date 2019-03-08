@@ -1809,7 +1809,11 @@ class TitleFormatter(object):
           c = fmt[i]
           i += 1
           current.append(c)
-          if c == '(':
+          if c == "'":
+            start = i
+            i = fmt.index("'", i) + 1
+            current.append(fmt[start:i])
+          elif c == '(':
             innerparens += 1
           elif c == ')':
             innerparens -= 1

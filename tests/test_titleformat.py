@@ -183,6 +183,8 @@ test_eval_cases = [
       ("a$invalid')''(')b(", 'a', False, None),
       ("a$invalid(b$invalid($invalid')''('(')'))))",
         'a[UNKNOWN FUNCTION]', False, None),
+      ("$if2(a,b$if2(c,$invalid(')'')'')')))",
+        'b[UNKNOWN FUNCTION]', False, None),
       ("a$add('3", 'a', False, None),
     ),
     *_testcasegroup('parser:functions',
