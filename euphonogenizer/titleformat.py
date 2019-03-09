@@ -1566,6 +1566,7 @@ default_ccache = {}
 next_token = re.compile(r"['%$\[\]()]")
 next_inner_token = re.compile(r"['$(,)]")
 next_paren_token = re.compile(r"[(')]")
+next_cond_token = re.compile(r"['\[\]]")
 
 
 class TitleFormatter(object):
@@ -1876,42 +1877,25 @@ class TitleFormatter(object):
       offset, offstart, memory):
     TitleFormatter.flush_compilation(compiling, compiled, output)
     self.log('begin parsing conditional at char %s', i, depth=depth)
-    current, lit, conds = '', False, 0
+    conds = 0
+    start = i
     while 1:
-      c, start, i = fmt[i], i, i + 1
-      if lit:
-        current += c
-        if c == "'":
-          self.log('leaving conditional literal mode at char %s', i,
-              depth=depth)
-          lit = False
-      elif c == '[':
-          self.log(
-              'found a pending conditional at char %s', i, depth=depth)
+      c = fmt[i]
+      i += 1
+      if c == '[':
           conds += 1
-          self.log('conditional parse count now %s',
-              conds, depth=depth)
-          current += c
       elif c == ']':
         if conds > 0:
-          self.log('found a terminating conditional at char %s', i,
-              depth=depth)
           conds -= 1
-          self.log('conditional parse count now %s at char %s',
-              conds, i, depth=depth)
-          current += c
         else:
-          self.log('finished parsing conditional at char %s', i,
-              depth=depth)
-
           if compiling:
             compiled_cond = self.eval(
-                None, current, True, depth + 1, offset + offstart,
+                None, fmt[start:i-1], True, depth + 1, offset + offstart,
                 memory, True)
             compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
           else:
             evaluated_value = self.eval(
-                track, current, True, depth + 1, offset + offstart,
+                track, fmt[start:i-1], True, depth + 1, offset + offstart,
                 memory)
 
             self.log('value is: %s', evaluated_value, depth=depth)
@@ -1923,14 +1907,10 @@ class TitleFormatter(object):
 
           return i, evals
       elif c == "'":
-        self.log('entering conditional literal mode at char %s', i,
-            depth=depth)
-        current += c
-        lit = True
+        i = fmt.index("'", i) + 1
       else:
-        while fmt[i] not in set(("'", '[', ']')):
-          i += 1
-        current += fmt[start:i]
+        match = next_cond_token.search(fmt, i)
+        i = match.start()
 
   def parse_fn_arg(self, track, current_fn, current, current_argv, c, i,
       depth=0, offset=0, memory={}, compiling=False):

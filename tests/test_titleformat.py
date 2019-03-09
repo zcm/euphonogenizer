@@ -246,6 +246,7 @@ test_eval_cases = [
       ('$div(1%track%,10)', '10', True, cs_01),
     ),
     *_testcasegroup('conditional',
+      ("[']'%artist%'[']", ']Collective Soul[', True, cs_01),
       ('asdf[jkl][qwer%disc%[ty]uiop]%track%[a[b[$add(1,%track%)]c]d]',
         'asdfqwer1uiop01ab2cd', True, cs_01),
     ),
