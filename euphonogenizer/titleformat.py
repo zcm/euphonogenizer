@@ -1491,19 +1491,17 @@ def dbglog(fmt, *args, **kwargs):
 
 class LazyCompilation(object):
   __slots__ = (
-      'formatter', 'current', 'conditional', 'depth', 'offset', 'memory', 'log',
+      'formatter', 'current', 'conditional', 'depth', 'offset', 'memory',
       'codeblock')
 
-  def __init__(self,
-      formatter, expression, conditional, depth, offset, track_memory,
-      log=nop):
+  def __init__(
+      self, formatter, expression, conditional, depth, offset, track_memory):
     self.formatter = formatter
     self.current = expression
     self.conditional = conditional
     self.depth = depth
     self.offset = offset
     self.memory = track_memory
-    self.log = log
     self.codeblock = None
 
   def curry(self, track):
@@ -1511,7 +1509,6 @@ class LazyCompilation(object):
 
   def eval(self, track):
     if self.codeblock is None:
-      self.log('lazily compiling block: %s', self.current, depth=self.depth)
       self.codeblock = self.formatter.eval(
           None, self.current, self.conditional, self.depth, self.offset,
           self.memory, True)
@@ -1534,10 +1531,6 @@ class TitleformatError(Exception):
 class TitleformatRuntimeError(TitleformatError):
   pass
 
-
-def noncompatible_dbg_msg(message):
-  return ('A non-compatible formatter would have raised an exception with'
-      ' the message "%s"' % message)
 
 def backwards_error(right, left_expected, offset, i):
   message = "Encountered '%s' with no matching '%s'" % (right, left_expected)
@@ -1571,16 +1564,15 @@ next_cond_token = re.compile(r"['\[\]]")
 
 class TitleFormatter(object):
   __slots__ = (
-      'case_sensitive', 'magic', 'for_filename', 'compatible', 'log', 'ccache')
+      'case_sensitive', 'magic', 'for_filename', 'compatible', 'ccache')
 
   def __init__(
       self, case_sensitive=False, magic=True, for_filename=False,
-      compatible=True, log=nop, ccache=default_ccache):
+      compatible=True, ccache=default_ccache):
     self.case_sensitive = case_sensitive
     self.magic = magic
     self.for_filename = for_filename
     self.compatible = compatible
-    self.log = log
     self.ccache = ccache
 
   def format(self, track, fmt):
@@ -1597,14 +1589,6 @@ class TitleFormatter(object):
     lit, conds, evals, i, soff, offstart = False, 0, 0, 0, -1, 0
     output = []
     compiled = []
-
-    self.log('fresh call to eval(); format="%s" offset=%s',
-        fmt, offset, depth=depth)
-    self.log(lambda: 'helpful char guide:           ' + (
-        ''.join([str(x) * 9 + str(x + 1)
-                 for x in range(0, 10)])[0:len(fmt)]), depth=depth)
-    self.log(lambda: 'helpful char guide:           ' + (
-        '1234567890' * (len(fmt) // 10 + 1))[0:len(fmt)], depth=depth)
 
     try:
       while 1:
@@ -1627,7 +1611,6 @@ class TitleFormatter(object):
             if compiling and output:
               compiled.append(lambda t, output=''.join(output): (output, 0))
               output.clear()
-            self.log('begin parsing variable at char %s', i, depth=depth)
             start = i
             i = fmt.index('%', i)
             if compiling:
@@ -1656,12 +1639,10 @@ class TitleFormatter(object):
           continue
         elif c == ']':
           if self.compatible:
-            self.log(lambda: noncompatible_dbg_msg(
-              backwards_error(']', '[', offset, i)), depth=depth)
             break
           else:
             raise TitleformatError(backwards_error(']', '[', offset, i))
-        elif (c == '(' or c == ')') and self.compatible:
+        elif c in '()' and self.compatible:
           # This seems like a foobar bug; parens shouldn't do anything outside
           # of a function call, but foobar will just explode if it sees a lone
           # paren floating around in the input.
@@ -1676,22 +1657,17 @@ class TitleFormatter(object):
           i = len(fmt)
           break
     except (IndexError, ValueError, AttributeError, StopIteration) as e:
-      self.log('Caught %s, ignoring: %s', e.__class__.__name__, e)
+      #print(f'Caught {e.__class__.__name__}, ignoring: {e}')
       pass
 
     # At this point, we have reached the end of the input.
-    if i < len(fmt):
-      if self.compatible:
-        self.log(lambda: state_errors[c](offset, i), depth=depth)
-      else:
+    if i < len(fmt) and not self.compatible:
         raise TitleformatError(state_errors[c](offset, i))
 
     if compiling:
       if output:
         # We need to flush the output buffer to a lambda once more
         compiled.append(lambda t, output=''.join(output): (output, 0))
-      self.log('eval() compiled the input into %s blocks', len(compiled),
-          depth=depth)
       self.ccache[fmt] = (lambda t, self=self, compiled=compiled, depth=depth:
         self.invoke_jit_eval(compiled, depth, t))
       return self.ccache[fmt]
@@ -1703,8 +1679,6 @@ class TitleFormatter(object):
 
     result = EvaluatorAtom(output, bool(evals))
 
-    self.log(lambda: 'eval() is returning: ' + repr(result), depth=depth)
-
     return result
 
   def invoke_jit_eval(self, compiled, depth, track):
@@ -1715,8 +1689,6 @@ class TitleFormatter(object):
       c_output, c_count = c(track)
       output += c_output
       eval_count += c_count
-
-    self.log('JIT evaluation complete, output: %s', output, depth=depth)
 
     return EvaluatorAtom(output, eval_count != 0)
 
@@ -1732,7 +1704,6 @@ class TitleFormatter(object):
     if compiling and output:
       compiled.append(lambda t, output=''.join(output): (output, 0))
       output.clear()
-    self.log('begin parsing function at char %s', i, depth=depth)
     state, argparens, innerparens = 0x0, 0, 0
     foffstart = i + 1
     current = []
@@ -1744,8 +1715,6 @@ class TitleFormatter(object):
         current.append(c)
       elif c == '(':
         current_fn = ''.join(current)
-        self.log(
-            'parsed function "%s" at char %s', current_fn, i, depth=depth)
         current.clear()
         state = 0x1
         off = i + 1
@@ -1775,10 +1744,6 @@ class TitleFormatter(object):
                 offset + offstart, memory, compiling))
             current.clear()
 
-          self.log(
-              'finished parsing function arglist at char %s', i,
-              depth=depth)
-
           if compiling:
             compiled.append(self.compile_fn_call(
               current_fn, current_argv, depth,
@@ -1792,23 +1757,17 @@ class TitleFormatter(object):
 
             evals += edelta
 
-            self.log('evaluation count is now %s', evals,
-                depth=depth)
-
           state = 0x0
           break
-      if c == "'":
+      if c == "'":  # Literal within arglist
         start = i
         i = fmt.index("'", i) + 1
         current.append(fmt[start-1:i])
-      elif c == '$':
-        self.log(
-            'stopped evaluation for function in arg at char %s', i,
-            depth=depth)
+      elif c == '$':  # Nested function call
         start = i
         innerparens = 0
         it = next_paren_token.finditer(fmt[i:])
-        while 1:  # Parse the nested function
+        while 1:
           match = next(it)
           c = match.group()
           if c == '(':
@@ -1819,40 +1778,28 @@ class TitleFormatter(object):
               match = next(it)
           elif c == ')':
             innerparens -= 1
-            if not innerparens:
-              # Stop skipping evaluation.
+            if not innerparens:  # Stop skipping evaluation.
               i += match.end()
               current.append(fmt[start-1:i])
-              self.log('resumed evaluation at char %s', i, depth=depth)
               break
             elif innerparens < 0:
               if self.compatible:
-                self.log(lambda: noncompatible_dbg_msg(
-                  backwards_error(')', '(', offset, i)), depth=depth)
                 raise StopIteration()
               else:
                 raise TitleformatError(backwards_error(')', '(', offset, i))
-      elif c == '(':
+      elif c == '(':  # "Paren poisoning" -- due to weird foobar parsing logic
         argparens += 1
-        self.log('detected paren poisoning at char %s', i,
-            depth=depth)
-        while 1:  # Paren poisoning
+        while 1:  # Skip to next arg or matching paren, whichever comes first
           c = fmt[i]
           if c == '(':
             argparens += 1
           elif not argparens:
             if c in ',)':
-              self.log('stopped paren poisoning at char %s', i,
-                  depth=depth)
               # Resume normal execution
               break
           elif c == ')':
             argparens -= 1
           i += 1  # Only need to do this if we're not actually breaking
-      #elif c == ')':
-        # I think this isn't possible anymore
-        #argparens -= 1
-        #current.append(c)
       else:
         # This is a critical section. I've tried the following approaches and
         # benchmarked them to find the fastest ones:
@@ -1876,7 +1823,6 @@ class TitleFormatter(object):
       self, track, fmt, i, depth, compiling, compiled, output, evals,
       offset, offstart, memory):
     TitleFormatter.flush_compilation(compiling, compiled, output)
-    self.log('begin parsing conditional at char %s', i, depth=depth)
     conds = 0
     start = i
     while 1:
@@ -1898,12 +1844,9 @@ class TitleFormatter(object):
                 track, fmt[start:i-1], True, depth + 1, offset + offstart,
                 memory)
 
-            self.log('value is: %s', evaluated_value, depth=depth)
             if evaluated_value:
               output.append(str(evaluated_value))
               evals += 1
-            self.log('evaluation count is now %s', evals,
-                depth=depth)
 
           return i, evals
       elif c == "'":
@@ -1915,12 +1858,10 @@ class TitleFormatter(object):
   def parse_fn_arg(self, track, current_fn, current, current_argv, c, i,
       depth=0, offset=0, memory={}, compiling=False):
     current = ''.join(current)
-    self.log('finished argument %s for function "%s" at char %s: %s',
-        len(current_argv), current_fn, i, current, depth=depth)
 
     if compiling:
       return LazyCompilation(
-          self, current, False, depth + 1, offset, memory, self.log)
+          self, current, False, depth + 1, offset, memory)
 
     # The lazy expression will parse the current buffer if it's ever needed.
     return LazyExpression(
@@ -1928,8 +1869,6 @@ class TitleFormatter(object):
 
   def handle_var_resolution(self, track, field, i, depth):
     evaluated_value = self.resolve_variable(track, field, i, depth)
-
-    self.log('value is: %s', evaluated_value, depth=depth)
 
     return ((str(evaluated_value) if evaluated_value is not True else '', 1)
             if evaluated_value or evaluated_value == ''
@@ -1960,38 +1899,20 @@ class TitleFormatter(object):
 
   def magic_resolve_variable(self, track, field, depth):
     field_lower = field.lower()
-    self.log('checking %s for magic mappings', field_lower, depth=depth)
     if field_lower in magic_mappings:
       mapping = magic_mappings[field_lower]
-      if not mapping:
-        self.log('mapping "%s" is not valid', field_lower, depth=depth)
-        return track.get(field)
-      else:
-        # First try to call it -- the mapping can be a function.
-        try:
-          magically_resolved = mapping(self, track)
-          self.log('mapped %s via function mapping', field_lower, depth=depth)
-          return magically_resolved
-        except TypeError:
-          # That didn't work. It's a list.
-          self.log('mapping "%s" is not a function', field_lower, depth=depth)
+      if mapping:
+        try:  # First try to call it -- the mapping can be a function.
+          return mapping(self, track)
+        except TypeError:  # That didn't work. It's a list.
           for each in mapping:
-            self.log('attempting to map "%s"', each, depth=depth)
             if each in track:
               return track.get(each)
             if self.case_sensitive:
               each_lower = each.lower()
-              self.log('attempting to map "%s"', each_lower, depth=depth)
               if each_lower in track:
                 return track.get(each_lower)
-
-          # Still couldn't find it.
-          self.log('mapping %s failed to map magic variable', field_lower,
-              depth=depth)
-          return track.get(field)
-
-    self.log('mapping %s not found in magic variables', field_lower,
-        depth=depth)
+    # Still couldn't find it.
     return track.get(field)
 
   def compile_fn_call(
@@ -2006,15 +1927,10 @@ class TitleFormatter(object):
     fn_result = self.invoke_function(
         track, current_fn, current_argv, depth, offset)
 
-    self.log('finished invoking function %s, value: %s',
-        current_fn, repr(fn_result), depth=depth)
-
     return vcallmarshal(fn_result)
 
   def invoke_function(
       self, track, function_name, function_argv, depth=0, offset=0, memory={}):
-    self.log('invoking function %s, args %s', function_name, function_argv,
-        depth=depth)
     curried_argv = [
         x.curry(track) if hasattr(x, 'curry') else x
         for x in function_argv]
