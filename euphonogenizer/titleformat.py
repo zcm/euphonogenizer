@@ -1587,11 +1587,11 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
   output = []
 
   if compiling:
-    do_var = compile_var
+    do_var, do_func = compile_var, compile_func
     #do_var, do_func, do_cond = compile_var, compile_func, compile_cond
     compiled = []
   else:
-    do_var = interpret_var
+    do_var, do_func = interpret_var, interpret_func
     #do_var, do_func, do_cond = interpret_var, interpret_func, interpret_cond
     compiled = None
 
@@ -1622,7 +1622,10 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
         soff = 0
         i += 1  # Fall through
       else:
-        goto ._function
+        i, evals, offset, offstart = do_func(
+            fmt, track, i, evals, output, compiled, depth, offset, offstart,
+            memory, case_sensitive, magic, for_filename, compatible, ccache)
+        goto .begin
     elif c == '[':
       goto ._conditional
     elif c == ']':
@@ -1647,133 +1650,11 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
     goto .begin  # End outer loop
 
     label ._function
-    if compiling and output:
-      compiled.append(lambda t, output=''.join(output): (output, 0))
-      output.clear()
-    state, argparens, innerparens = 0x0, 0, 0
-    foffstart = i + 1
-    current = []
-    current_argv = []
-    while 1:
-      c = fmt[i]
-      i += 1
-      if c.isalnum() or c == '_':
-        current.append(c)
-      elif c == '(':
-        current_fn = ''.join(current)
-        current.clear()
-        state = 0x1
-        off = i + 1
-        break
-      else:
-        if compatible:
-          break
-        raise TitleformatError(
-            "Illegal token '%s' encountered at char %s" % (c, i))
-    if not state:
-      raise StopIteration()
-    while 1:
-      c = fmt[i]
-      i += 1
-      if not argparens:
-        if c == ')':
-          if current or current_argv:
-            goto .parse_argument
-
-          label .finish_arglist
-          if compiling:
-            compiled.append(compile_fn_call(
-              current_fn, current_argv, depth,
-              offset + foffstart))
-          else:
-            val, edelta = invoke_function(
-                track, current_fn, current_argv, depth, offset + foffstart,
-                memory)
-            if val:
-              output.append(val)
-            evals += edelta
-          state = 0x0
-          break
-        elif c == ',':
-          label .parse_argument  # This label avoids a huge function call
-          current_argv.append(
-              # The lazy expression will parse the buffer if it's ever needed.
-              LazyCompilation(
-                  ''.join(current), False, depth + 1, offset + offstart,
-                  memory, case_sensitive, magic, for_filename, compatible,
-                  ccache)
-              if compiling else LazyExpression(
-                  track, ''.join(current), False, depth + 1, offset + offstart,
-                  memory, case_sensitive, magic, for_filename, compatible,
-                  ccache))
-          current.clear()
-          # I know this looks impossible but the previous block can jump here
-          if c == ')':
-            goto .finish_arglist
-          offstart = i + 1
-          continue
-      if c == "'":  # Literal within arglist
-        start = i
-        i = fmt.index("'", i) + 1
-        current.append(fmt[start-1:i])
-      elif c == '$':  # Nested function call
-        start = i
-        innerparens = 0
-        it = next_paren_token.finditer(fmt[i:])
-        while 1:
-          match = next(it)
-          c = match.group()
-          if c == '(':
-            innerparens += 1
-          elif c == "'":
-            match = next(it)
-            while match.group() != "'":
-              match = next(it)
-          elif c == ')':
-            innerparens -= 1
-            if not innerparens:  # Stop skipping evaluation.
-              i += match.end()
-              current.append(fmt[start-1:i])
-              break
-            elif innerparens < 0:
-              if compatible:
-                raise StopIteration()
-              else:
-                raise TitleformatError(backwards_error(')', '(', offset, i))
-      elif c == '(':  # "Paren poisoning" -- due to weird foobar parsing logic
-        argparens += 1
-        while 1:  # Skip to next arg or matching paren, whichever comes first
-          c = fmt[i]
-          if c == '(':
-            argparens += 1
-          elif not argparens:
-            if c in ',)':
-              # Resume normal execution
-              break
-          elif c == ')':
-            argparens -= 1
-          i += 1  # Only need to do this if we're not actually breaking
-      else:
-        # This is a critical section. I've tried the following approaches and
-        # benchmarked them to find the fastest ones:
-        #     1. Regular expression match groups (this one)
-        #     2. Increment the index counter until you find it
-        #     3. Use next() with a comprehension to assign the index counter
-        #     4. Use min() and str.find() to find the lowest index
-        #     5. Reduce min() over a map of a sliced fmt with a filter
-        # #1 is overall very good and asymptotically the fastest. #2 is faster
-        # for very short sequences by about 4%, making it better for the unit
-        # tests, but overall not worth it. Everything else just performs worse
-        # somehow in the formatter, even if it benchmarks well outside it.
-        match = next_inner_token.search(fmt, i)
-        i = match.start()  # Don't check, just let this raise AttributeError!
-        current.append(fmt[match.pos-1:i])
-    if state:
-      raise StopIteration()
     goto .begin  # End ._function
 
     label ._conditional
-    flush_compilation(compiling, compiled, output)
+    if compiling and output:
+      flush_output(output, compiled)
     conds = 0
     start = i
     while 1:
@@ -1834,6 +1715,12 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
   return result
 
 
+def flush_output(output, compiled):
+  joined_output = ''.join(output)
+  compiled.append(lambda t: (joined_output, 0))
+  output.clear()
+
+
 def interpret_var(
     fmt, track, i, evals, output, compiled, depth, case_sensitive, magic,
     for_filename):
@@ -1851,9 +1738,7 @@ def compile_var(
     fmt, track, i, evals, output, compiled, depth, case_sensitive, magic,
     for_filename):
   if output:
-    joined_output = ''.join(output)
-    compiled.append(lambda t: (joined_output, 0))
-    output.clear()
+    flush_output(output, compiled)
 
   start = i
   i = fmt.index('%', i)
@@ -1866,6 +1751,171 @@ def compile_var(
   return i + 1, None
 
 
+def interpret_func(
+    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache):
+  return construe_func(
+    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache,
+    interpret_arg, interpret_arglist)
+
+
+def compile_func(
+    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache):
+  if output:
+    flush_output(output, compiled)
+  return construe_func(
+    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache,
+    compile_arg, compile_arglist)
+
+
+def interpret_arg(
+    track, current, arglist, depth, offset, memory, case_sensitive, magic,
+    for_filename, compatible, ccache):
+  arglist.append(
+      LazyExpression(
+          track, ''.join(current), False, depth, offset, memory,
+          case_sensitive, magic, for_filename, compatible, ccache))
+  current.clear()
+
+
+def compile_arg(
+    track, current, arglist, depth, offset, memory, case_sensitive, magic,
+    for_filename, compatible, ccache):
+  arglist.append(
+      LazyCompilation(
+          ''.join(current), False, depth, offset, memory,
+          case_sensitive, magic, for_filename, compatible, ccache))
+  current.clear()
+
+
+def interpret_arglist(
+    track, evals, current_fn, arglist, output, compiled, depth, offset, memory):
+  val, edelta = invoke_function(
+      track, current_fn, arglist, depth, offset, memory)
+  if val:
+    output.append(val)
+  return evals + edelta
+
+
+def compile_arglist(
+    track, evals, current_fn, arglist, output, compiled, depth, offset, memory):
+  compiled.append(
+      compile_fn_call(current_fn, arglist, depth, offset))
+
+
+def construe_func(
+    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache,
+    do_arg, do_arglist):
+  within_arglist, argparens, innerparens = False, 0, 0
+  foffstart = i + 1
+  current = []
+
+  while 1:
+    c = fmt[i]
+    i += 1
+    if c.isalnum() or c == '_':
+      current.append(c)
+    elif c == '(':
+      current_fn = ''.join(current)
+      current.clear()
+      within_arglist = True
+      off = i + 1
+      break
+    else:
+      if compatible:
+        break
+      raise TitleformatError(
+          "Illegal token '%s' encountered at char %s" % (c, i))
+
+  if not within_arglist:
+    raise StopIteration()
+
+  arglist = []
+
+  while 1:
+    c = fmt[i]
+    i += 1
+    if not argparens:
+      if c == ')':
+        if current or arglist:
+          do_arg(track, current, arglist, depth + 1, offset + offstart, memory,
+              case_sensitive, magic, for_filename, compatible, ccache)
+
+        evals = do_arglist(
+            track, evals, current_fn, arglist, output, compiled, depth,
+            offset + foffstart, memory)
+        within_arglist = False
+        break
+      elif c == ',':
+        do_arg(track, current, arglist, depth + 1, offset + offstart, memory,
+            case_sensitive, magic, for_filename, compatible, ccache)
+        offstart = i + 1
+        continue
+    if c == "'":  # Literal within arglist
+      start = i
+      i = fmt.index("'", i) + 1
+      current.append(fmt[start-1:i])
+    elif c == '$':  # Nested function call
+      start = i
+      innerparens = 0
+      it = next_paren_token.finditer(fmt[i:])
+      while 1:
+        match = next(it)
+        c = match.group()
+        if c == '(':
+          innerparens += 1
+        elif c == "'":
+          match = next(it)
+          while match.group() != "'":
+            match = next(it)
+        elif c == ')':
+          innerparens -= 1
+          if not innerparens:  # Stop skipping evaluation.
+            i += match.end()
+            current.append(fmt[start-1:i])
+            break
+          elif innerparens < 0:
+            if compatible:
+              raise StopIteration()
+            else:
+              raise TitleformatError(backwards_error(')', '(', offset, i))
+    elif c == '(':  # "Paren poisoning" -- due to weird foobar parsing logic
+      argparens += 1
+      while 1:  # Skip to next arg or matching paren, whichever comes first
+        c = fmt[i]
+        if c == '(':
+          argparens += 1
+        elif not argparens:
+          if c in ',)':
+            # Resume normal execution
+            break
+        elif c == ')':
+          argparens -= 1
+        i += 1  # Only need to do this if we're not actually breaking
+    else:
+      # This is a critical section. I've tried the following approaches and
+      # benchmarked them to find the fastest ones:
+      #     1. Regular expression match groups (this one)
+      #     2. Increment the index counter until you find it
+      #     3. Use next() with a comprehension to assign the index counter
+      #     4. Use min() and str.find() to find the lowest index
+      #     5. Reduce min() over a map of a sliced fmt with a filter
+      # #1 is overall very good and asymptotically the fastest. #2 is faster
+      # for very short sequences by about 4%, making it better for the unit
+      # tests, but overall not worth it. Everything else just performs worse
+      # somehow in the formatter, even if it benchmarks well outside it.
+      match = next_inner_token.search(fmt, i)
+      i = match.start()  # Don't check, just let this raise AttributeError!
+      current.append(fmt[match.pos-1:i])
+  if within_arglist:
+    raise StopIteration()
+  return i, evals, offset, offstart
+
+
 def invoke_jit_eval(compiled, depth, track):
   output = ''
   eval_count = 0
@@ -1876,11 +1926,6 @@ def invoke_jit_eval(compiled, depth, track):
     eval_count += c_count
 
   return EvaluatorAtom(output, eval_count != 0)
-
-def flush_compilation(compiling, compiled, output):
-  if compiling and output:
-    compiled.append(lambda t, output=''.join(output): (output, 0))
-    output.clear()
 
 def handle_var_resolution(
     track, field, depth, case_sensitive, magic, for_filename):
