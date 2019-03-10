@@ -16,8 +16,6 @@ import re
 import sys
 import unicodedata
 
-from goto import with_goto
-
 from .common import dbg
 
 
@@ -1576,119 +1574,77 @@ def format(track, fmt):
 def compile(fmt):
   return _eval(None, fmt, compiling=True)
 
-@with_goto
 def _eval(track, fmt, conditional=False, depth=0, offset=0,
     memory={}, compiling=False, case_sensitive=False, magic=True,
     for_filename=False, compatible=True, ccache=default_ccache):
   if fmt in ccache:
     return ccache[fmt] if compiling else ccache[fmt](track)
 
-  conds, evals, i, soff, offstart = 0, 0, 0, -1, 0
+  evals, i, soff, offstart = 0, 0, -1, 0
   output = []
 
   if compiling:
-    do_var, do_func = compile_var, compile_func
-    #do_var, do_func, do_cond = compile_var, compile_func, compile_cond
+    do_var, do_func, do_cond = compile_var, compile_func, compile_cond
     compiled = []
   else:
-    do_var, do_func = interpret_var, interpret_func
-    #do_var, do_func, do_cond = interpret_var, interpret_func, interpret_cond
+    do_var, do_func, do_cond = interpret_var, interpret_func, interpret_cond
     compiled = None
 
   try:
-    label .begin
-    c = fmt[i]
-    i += 1
-    if c == "'":
-      if fmt[i] == "'":
-        soff = 0
-        i += 1  # Fall through
-      else:
-        start = i
-        i = fmt.index("'", i) + 1
-        output.append(fmt[start:i-1])
-        goto .begin
-    elif c == '%':
-      if fmt[i] == '%':
-        soff = 0
-        i += 1  # Fall through
-      else:
-        i, evals = do_var(
-            fmt, track, i, evals, output, compiled, depth, case_sensitive,
-            magic, for_filename)
-        goto .begin
-    elif c == '$':
-      if fmt[i] == '$':
-        soff = 0
-        i += 1  # Fall through
-      else:
-        i, evals, offset, offstart = do_func(
-            fmt, track, i, evals, output, compiled, depth, offset, offstart,
-            memory, case_sensitive, magic, for_filename, compatible, ccache)
-        goto .begin
-    elif c == '[':
-      goto ._conditional
-    elif c == ']':
-      if compatible:
-        goto .end
-      else:
-        raise TitleformatError(backwards_error(']', '[', offset, i))
-    elif c in '()' and compatible:
-      # This seems like a foobar bug; parens shouldn't do anything outside
-      # of a function call, but foobar will just explode if it sees a lone
-      # paren floating around in the input.
-      goto .end
-    match = next_token.search(fmt, i + soff)
-    if match:
-      output.append(fmt[i-1:match.start()])
-      soff = -1
-      i = match.start()
-    else:
-      output.append(fmt[i-1:])
-      i = len(fmt)
-      goto .end
-    goto .begin  # End outer loop
-
-    label ._function
-    goto .begin  # End ._function
-
-    label ._conditional
-    if compiling and output:
-      flush_output(output, compiled)
-    conds = 0
-    start = i
-    while 1:
+    while True:
       c = fmt[i]
       i += 1
-      if c == '[':
-          conds += 1
-      elif c == ']':
-        if conds > 0:
-          conds -= 1
+      if c == "'":
+        if fmt[i] == "'":
+          soff = 0
+          i += 1  # Fall through
         else:
-          if compiling:
-            compiled_cond = _eval(
-                None, fmt[start:i-1], True, depth + 1, offset + offstart,
-                memory, True)
-            compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
-          else:
-            evaluated_value = _eval(
-                track, fmt[start:i-1], True, depth + 1, offset + offstart,
-                memory)
-
-            if evaluated_value:
-              output.append(str(evaluated_value))
-              evals += 1
-
+          start = i
+          i = fmt.index("'", i) + 1
+          output.append(fmt[start:i-1])
+          continue
+      elif c == '%':
+        if fmt[i] == '%':
+          soff = 0
+          i += 1  # Fall through
+        else:
+          i, evals = do_var(
+              fmt, i, track, evals, output, compiled, depth, case_sensitive,
+              magic, for_filename)
+          continue
+      elif c == '$':
+        if fmt[i] == '$':
+          soff = 0
+          i += 1  # Fall through
+        else:
+          i, evals, offset, offstart = do_func(
+              fmt, i, track, evals, output, compiled, depth, offset, offstart,
+              memory, case_sensitive, magic, for_filename, compatible, ccache)
+          continue
+      elif c == '[':
+        i, evals = do_cond(
+            fmt, i, track, evals, output, compiled, depth, offset + offstart,
+            memory, case_sensitive, magic, for_filename, compatible, ccache)
+        continue
+      elif c == ']':
+        if compatible:
           break
-      elif c == "'":
-        i = fmt.index("'", i) + 1
-      else:
-        match = next_cond_token.search(fmt, i)
+        else:
+          raise TitleformatError(backwards_error(']', '[', offset, i))
+      elif c in '()' and compatible:
+        # This seems like a foobar bug; parens shouldn't do anything outside
+        # of a function call, but foobar will just explode if it sees a lone
+        # paren floating around in the input.
+        break
+      match = next_token.search(fmt, i + soff)
+      if match:
+        output.append(fmt[i-1:match.start()])
+        soff = -1
         i = match.start()
-    goto .begin  # End ._conditional
-
-    label .end
+      else:
+        output.append(fmt[i-1:])
+        i = len(fmt)
+        break
   except (IndexError, ValueError, AttributeError, StopIteration) as e:
     #print(f'Caught {e.__class__.__name__}, ignoring: {e}')
     pass
@@ -1722,7 +1678,7 @@ def flush_output(output, compiled):
 
 
 def interpret_var(
-    fmt, track, i, evals, output, compiled, depth, case_sensitive, magic,
+    fmt, i, track, evals, output, compiled, depth, case_sensitive, magic,
     for_filename):
   start = i
   i = fmt.index('%', i)
@@ -1735,7 +1691,7 @@ def interpret_var(
 
 
 def compile_var(
-    fmt, track, i, evals, output, compiled, depth, case_sensitive, magic,
+    fmt, i, track, evals, output, compiled, depth, case_sensitive, magic,
     for_filename):
   if output:
     flush_output(output, compiled)
@@ -1752,21 +1708,21 @@ def compile_var(
 
 
 def interpret_func(
-    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache):
   return construe_func(
-    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     interpret_arg, interpret_arglist)
 
 
 def compile_func(
-    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache):
   if output:
     flush_output(output, compiled)
   return construe_func(
-    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     compile_arg, compile_arglist)
 
@@ -1807,14 +1763,14 @@ def compile_arglist(
 
 
 def construe_func(
-    fmt, track, i, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     do_arg, do_arglist):
   within_arglist, argparens, innerparens = False, 0, 0
   foffstart = i + 1
   current = []
 
-  while 1:
+  while True:
     c = fmt[i]
     i += 1
     if c.isalnum() or c == '_':
@@ -1836,7 +1792,7 @@ def construe_func(
 
   arglist = []
 
-  while 1:
+  while True:
     c = fmt[i]
     i += 1
     if not argparens:
@@ -1863,7 +1819,7 @@ def construe_func(
       start = i
       innerparens = 0
       it = next_paren_token.finditer(fmt[i:])
-      while 1:
+      while True:
         match = next(it)
         c = match.group()
         if c == '(':
@@ -1885,7 +1841,7 @@ def construe_func(
               raise TitleformatError(backwards_error(')', '(', offset, i))
     elif c == '(':  # "Paren poisoning" -- due to weird foobar parsing logic
       argparens += 1
-      while 1:  # Skip to next arg or matching paren, whichever comes first
+      while True:  # Skip to next arg or matching paren, whichever comes first
         c = fmt[i]
         if c == '(':
           argparens += 1
@@ -1914,6 +1870,66 @@ def construe_func(
   if within_arglist:
     raise StopIteration()
   return i, evals, offset, offstart
+
+
+def interpret_cond(
+    fmt, i, track, evals, output, compiled, depth, offset, memory,
+    case_sensitive, magic, for_filename, compatible, ccache):
+  return construe_cond(
+    fmt, i, track, evals, output, depth, offset, memory,
+    case_sensitive, magic, for_filename, compatible, ccache,
+    interpret_cond_contents)
+
+
+def compile_cond(
+    fmt, i, track, evals, output, compiled, depth, offset, memory,
+    case_sensitive, magic, for_filename, compatible, ccache):
+  if output:
+    flush_output(output, compiled)
+  return construe_cond(
+    fmt, i, track, evals, compiled, depth, offset, memory,
+    case_sensitive, magic, for_filename, compatible, ccache,
+    compile_cond_contents)
+
+
+def interpret_cond_contents(
+    fmt, track, evals, output, depth, offset, memory):
+  evaluated_value = _eval(track, fmt, True, depth, offset, memory)
+
+  if evaluated_value:
+    output.append(str(evaluated_value))
+    return evals + 1
+  return evals
+
+
+def compile_cond_contents(
+    fmt, track, evals, compiled, depth, offset, memory):
+  compiled_cond = _eval(None, fmt, True, depth, offset, memory, True)
+  compiled.append(lambda t: vcondmarshal(compiled_cond(t)))
+
+
+def construe_cond(
+    fmt, i, track, evals, container, depth, offset, memory,
+    case_sensitive, magic, for_filename, compatible, ccache,
+    do_cond_contents):
+  conds = 0
+  start = i
+  while True:
+    c = fmt[i]
+    i += 1
+    if c == '[':
+        conds += 1
+    elif c == ']':
+      if conds:
+        conds -= 1
+      else:
+        return i, do_cond_contents(
+            fmt[start:i-1], track, evals, container, depth + 1, offset, memory)
+    elif c == "'":
+      i = fmt.index("'", i) + 1
+    else:
+      match = next_cond_token.search(fmt, i)
+      i = match.start()
 
 
 def invoke_jit_eval(compiled, depth, track):
