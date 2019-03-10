@@ -1695,7 +1695,7 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
               current_fn, current_argv, depth,
               offset + foffstart))
           else:
-            val, edelta = handle_fn_invocation(
+            val, edelta = invoke_function(
                 track, current_fn, current_argv, depth, offset + foffstart,
                 memory)
             if val:
@@ -1910,17 +1910,10 @@ def compile_fn_call(current_fn, current_argv, depth, offset):
     vcallmarshal(vmarshal(
       fn(t, {}, [x.curry(t) if hasattr(x, 'curry') else x for x in argv]))))
 
-def handle_fn_invocation(
-    track, current_fn, current_argv, depth, offset, memory):
-  fn_result = invoke_function(
-      track, current_fn, current_argv, depth, offset, memory)
-
-  return vcallmarshal(fn_result)
-
 def invoke_function(
     track, function_name, function_argv, depth, offset, memory):
   curried_argv = [
       x.curry(track) if hasattr(x, 'curry') else x
       for x in function_argv]
-  return vinvoke(track, function_name, curried_argv, memory)
+  return vcallmarshal(vinvoke(track, function_name, curried_argv, memory))
 
