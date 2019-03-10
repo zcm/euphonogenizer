@@ -13,16 +13,12 @@ import os
 import platform
 import random
 import re
-import six
 import sys
 import unicodedata
 
 from .common import dbg
 
-from six import binary_type, text_type
 
-
-@six.python_2_unicode_compatible
 class EvaluatorAtom(object):
   __slots__ = 'value', 'truth'
 
@@ -121,10 +117,10 @@ class EvaluatorAtom(object):
     return hash((self.value, self.truth))
 
   def __str__(self):
-    return text_type(self.value)
+    return str(self.value)
 
   def __bytes__(self):
-    return binary_type(self.value, 'utf-8')
+    return bytes(self.value, 'utf-8')
 
   def __nonzero__(self):
     return self.truth
@@ -146,14 +142,14 @@ class EvaluatorAtom(object):
 def magic_map_filename(formatter, track):
   value = track.get('@')
   if value is not None and value is not False:
-    return text_type(foo_filename(None, None, [value]))
+    return str(foo_filename(None, None, [value]))
   return None
 
 def magic_map_filename_ext(formatter, track):
   value = track.get('@')
   if value is not None and value is not False:
-    filename = text_type(foo_filename(None, None, [value]))
-    ext = text_type(foo_ext(None, None, [value]))
+    filename = str(foo_filename(None, None, [value]))
+    ext = str(foo_ext(None, None, [value]))
     if ext:
       filename += '.' + ext
     return filename
@@ -183,7 +179,7 @@ def magic_map_tracknumber(track):
 def magic_map_track_number(track):
   value = __find_tracknumber(track)
   if value is not None and value is not False:
-    return text_type(int(value))
+    return str(int(value))
   return None
 
 
@@ -325,7 +321,7 @@ def foo_nnop(track, memory, va):
       pass
 
     val = __foo_va_conv_n_unsafe(val)
-    val.value = text_type(val.value)
+    val.value = str(val.value)
     return val
   except AttributeError:
     pass
@@ -605,19 +601,19 @@ def foo_ansi(track, memory, va_x):
   # wide characters as Foobar, which produces two '??' instead of one. I don't
   # have a multibyte build of Python lying around right now, so I can't
   # confirm at the moment. But really, it probably doesn't matter.
-  result = text_type(x).encode('windows-1252', '__foo_ansi_replace')
+  result = str(x).encode('windows-1252', '__foo_ansi_replace')
   return EvaluatorAtom(str(result, 'windows-1252', 'replace'), bool(x))
 
 def foo_ascii(track, memory, va_x):
   x = va_x[0].eval()
-  result = text_type(x).encode('ascii', '__foo_ascii_replace')
+  result = str(x).encode('ascii', '__foo_ascii_replace')
   return EvaluatorAtom(result.decode('utf-8', 'replace'), bool(x))
 
 def foo_caps_impl(va_x, on_nonfirst):
   x = va_x[0].eval()
   result = ''
   new_word = True
-  for c in text_type(x):
+  for c in str(x):
     if __foo_is_word_sep(c):
       new_word = True
       result += c
@@ -644,7 +640,7 @@ def foo_char(track, memory, va_x):
     # In the future, we might want a better, non-compliant implementation.
     return '?'
   try:
-    return six.unichr(x)
+    return chr(x)
   except ValueError:
     # Also happens when using a narrow Python build
     return '?'
@@ -653,7 +649,7 @@ def foo_char(track, memory, va_x):
 
 def foo_crc32(track, memory, va_x):
   x = va_x[0].eval()
-  crc = binascii.crc32(binary_type(x))
+  crc = binascii.crc32(bytes(x))
   return EvaluatorAtom(crc, bool(x))
 
 def foo_crlf(track, memory, va):
@@ -666,7 +662,7 @@ def foo_directory_1(track, memory, va_x):
   # RFC 8089 allows pipe characters to be used instead of the colons in the
   # drive construct, and Foobar obeys this. For more information, see:
   # https://tools.ietf.org/html/rfc8089#appendix-E.2.2
-  parts = re.split('[\\\\/:|]', text_type(x))
+  parts = re.split('[\\\\/:|]', str(x))
   if len(parts) < 2:
     return EvaluatorAtom('', bool(x))
   return EvaluatorAtom(parts[-2], bool(x))
@@ -676,7 +672,7 @@ def foo_directory_2(track, memory, va_x_n):
   n = __foo_va_conv_n_lazy_int(va_x_n[1])
   if n <= 0:
     return EvaluatorAtom('', bool(x))
-  parts = re.split('[\\\\/:|]', text_type(x))
+  parts = re.split('[\\\\/:|]', str(x))
   parts_len = len(parts)
   if n >= parts_len or parts_len < 2:
     return EvaluatorAtom('', bool(x))
@@ -684,7 +680,7 @@ def foo_directory_2(track, memory, va_x_n):
 
 def foo_directory_path(track, memory, va_x):
   x = va_x[0].eval()
-  parts = re.split('[\\\\/:|]', text_type(x)[::-1], 1)
+  parts = re.split('[\\\\/:|]', str(x)[::-1], 1)
   if len(parts) < 2:
     return EvaluatorAtom('', bool(x))
   return EvaluatorAtom(parts[1][::-1], bool(x))
@@ -697,7 +693,7 @@ def foo_ext(track, memory, va_x):
   except AttributeError:
     pass
 
-  _, delimiter, ext = text_type(x).rpartition('.')
+  _, delimiter, ext = str(x).rpartition('.')
 
   if not delimiter or any(c in '/\\|:' for c in ext):
     return ''
@@ -712,7 +708,7 @@ def foo_filename(track, memory, va_x):
   except AttributeError:
     pass
 
-  parts = re.split('[\\\\/:|]', text_type(x))
+  parts = re.split('[\\\\/:|]', str(x))
 
   return EvaluatorAtom(
       parts[-1].partition('?')[0].rsplit('.', 1)[0], bool(x))
@@ -730,11 +726,11 @@ def foo_fix_eol(track, memory, x, indicator):
     pass
 
   try:
-    indicator = text_type(indicator.eval())
+    indicator = str(indicator.eval())
   except AttributeError:
     pass
 
-  parts = re.split('[\r\n]', text_type(x), 1)
+  parts = re.split('[\r\n]', str(x), 1)
 
   if len(parts) > 1:
     return EvaluatorAtom(parts[0] + indicator, bool(x))
@@ -762,7 +758,7 @@ def foo_hex(track, memory, n, length=0):
 
 def foo_insert(track, memory, va_a_b_n):
   a = va_a_b_n[0].eval()
-  b = text_type(va_a_b_n[1].eval())
+  b = str(va_a_b_n[1].eval())
   n = __foo_va_conv_n_lazy_int(va_a_b_n[2])
 
   if n < 0:
@@ -784,12 +780,12 @@ foo_cut = foo_left  # These are the same, so just alias for completeness
 
 def foo_len(track, memory, va_a):
   a = va_a[0].eval()
-  return EvaluatorAtom(len(text_type(a)), bool(a))
+  return EvaluatorAtom(len(str(a)), bool(a))
 
 def foo_len2(track, memory, va_a):
   a = va_a[0].eval()
   length = 0
-  str_a = text_type(a)
+  str_a = str(a)
   for c in str_a:
     width = unicodedata.east_asian_width(c)
     if width == 'N' or width == 'Na' or width == 'H':
@@ -801,20 +797,20 @@ def foo_len2(track, memory, va_a):
   return EvaluatorAtom(length, bool(a))
 
 def foo_longer(track, memory, va_a_b):
-  len_a = len(text_type(va_a_b[0].eval()))
-  len_b = len(text_type(va_a_b[1].eval()))
+  len_a = len(str(va_a_b[0].eval()))
+  len_b = len(str(va_a_b[1].eval()))
   return len_a > len_b
 
 def foo_lower(track, memory, va_a):
   a = va_a[0].eval()
-  return EvaluatorAtom(text_type(a).lower(), bool(a))
+  return EvaluatorAtom(str(a).lower(), bool(a))
 
 def foo_longest(track, memory, va_a1_aN):
   longest = None
   longest_len = -1
   for each in va_a1_aN:
     current = each.eval()
-    current_len = len(text_type(current))
+    current_len = len(str(current))
     if current_len > longest_len:
       longest = current
       longest_len = current_len
@@ -825,9 +821,9 @@ def foo_num(track, memory, va_n_len):
   length = __foo_va_conv_n_lazy_int(va_n_len[1])
   value = None
   if (length > 0):
-    value = text_type(__foo_va_conv_n(n)).zfill(length)
+    value = str(__foo_va_conv_n(n)).zfill(length)
   else:
-    value = text_type(__foo_int(__foo_va_conv_n(n)))
+    value = str(__foo_int(__foo_va_conv_n(n)))
   return EvaluatorAtom(value, bool(n))
 
 def foo_pad_universal(va_x_len_char, right):
@@ -836,14 +832,14 @@ def foo_pad_universal(va_x_len_char, right):
   char = va_x_len_char[2]
 
   try:
-    char = text_type(char.eval())[0]
+    char = str(char.eval())[0]
   except AttributeError:
     pass
 
   if not char:
     return x
 
-  x_str = text_type(x)
+  x_str = str(x)
   x_len = len(x_str)
 
   if x_len < length:
@@ -879,8 +875,8 @@ def foo_progress_universal(va_pos_range_len_a_b, is2):
   pos = va_pos_range_len_a_b[0].eval()
   range_value = va_pos_range_len_a_b[1].eval()
   length = __foo_va_conv_n_lazy_int(va_pos_range_len_a_b[2])
-  a = text_type(va_pos_range_len_a_b[3].eval())
-  b = text_type(va_pos_range_len_a_b[4].eval())
+  a = str(va_pos_range_len_a_b[3].eval())
+  b = str(va_pos_range_len_a_b[4].eval())
   pos_int = __foo_int(__foo_va_conv_n(pos))
   range_int = __foo_int(__foo_va_conv_n(range_value))
 
@@ -934,11 +930,11 @@ def foo_progress2(track, memory, va_pos_range_len_a_b):
 def foo_repeat(track, memory, va_a_n):
   a = va_a_n[0].eval()
   n = __foo_va_conv_n_lazy_int(va_a_n[1])
-  return EvaluatorAtom(text_type(a) * n, bool(a))
+  return EvaluatorAtom(str(a) * n, bool(a))
 
 def foo_replace_explode_recursive(a, va_a_bN_cN, i):
   if i + 1 < len(va_a_bN_cN):
-    b = text_type(va_a_bN_cN[i].eval())
+    b = str(va_a_bN_cN[i].eval())
     splits = a.split(b)
     current = []
     for each in splits:
@@ -956,7 +952,7 @@ def foo_replace_join_recursive(splits, va_a_bN_cN, i):
       sub_joined = foo_replace_join_recursive(each, va_a_bN_cN, i + 2)
       if sub_joined is not None:
         current.append(sub_joined)
-    c = text_type(va_a_bN_cN[i].eval())
+    c = str(va_a_bN_cN[i].eval())
     if not current:
       current = splits
     joined = c.join(current)
@@ -964,7 +960,7 @@ def foo_replace_join_recursive(splits, va_a_bN_cN, i):
 
 def foo_replace(track, memory, va_a_bN_cN):
   a = va_a_bN_cN[0].eval()
-  splits = foo_replace_explode_recursive(text_type(a), va_a_bN_cN, 1)
+  splits = foo_replace_explode_recursive(str(a), va_a_bN_cN, 1)
   result = foo_replace_join_recursive(splits, va_a_bN_cN, 2)
   # Truthfully, I have no idea if this is actually right, but it's probably good
   # enough for what it does. The sample cases check out, at least.
@@ -973,7 +969,7 @@ def foo_replace(track, memory, va_a_bN_cN):
 def foo_right(track, memory, va_a_len):
   a = va_a_len[0].eval()
   length = __foo_va_conv_n_lazy_int(va_a_len[1])
-  a_str = text_type(a)
+  a_str = str(a)
   a_len = len(a_str)
   if a_len == 0 or length >= a_len:
     return a
@@ -1010,7 +1006,7 @@ def foo_roman(track, memory, va_n):
 
 def foo_rot13(track, memory, va_a):
   a = va_a[0].eval()
-  rot = codecs.encode(text_type(a), 'rot_13')
+  rot = codecs.encode(str(a), 'rot_13')
   return EvaluatorAtom(rot, bool(a))
 
 def foo_shortest(track, memory, va_aN):
@@ -1018,15 +1014,15 @@ def foo_shortest(track, memory, va_aN):
   shortest_len = -1
   for each in va_aN:
     current = each.eval()
-    current_len = len(text_type(current))
+    current_len = len(str(current))
     if shortest_len == -1 or current_len < shortest_len:
       shortest = current
       shortest_len = current_len
   return shortest
 
 def foo_strchr(track, memory, va_s_c):
-  s = text_type(va_s_c[0].eval())
-  c = text_type(va_s_c[1].eval())
+  s = str(va_s_c[0].eval())
+  c = str(va_s_c[1].eval())
   if c:
     c = c[0]
     for i, char in enumerate(s):
@@ -1035,8 +1031,8 @@ def foo_strchr(track, memory, va_s_c):
   return EvaluatorAtom(0, False)
 
 def foo_strrchr(track, memory, va_s_c):
-  s = text_type(va_s_c[0].eval())
-  c = text_type(va_s_c[1].eval())
+  s = str(va_s_c[0].eval())
+  c = str(va_s_c[1].eval())
   if c:
     c = c[0]
     for i, char in itertools.izip(reversed(xrange(len(s))), reversed(s)):
@@ -1045,8 +1041,8 @@ def foo_strrchr(track, memory, va_s_c):
   return EvaluatorAtom(0, False)
 
 def foo_strstr(track, memory, va_s1_s2):
-  s1 = text_type(va_s1_s2[0].eval())
-  s2 = text_type(va_s1_s2[1].eval())
+  s1 = str(va_s1_s2[0].eval())
+  s2 = str(va_s1_s2[1].eval())
   found_index = 0
   if s1 and s2:
     found_index = s1.find(s2) + 1
@@ -1055,14 +1051,14 @@ def foo_strstr(track, memory, va_s1_s2):
 def foo_strcmp(track, memory, va_s1_s2):
   s1 = va_s1_s2[0].eval()
   s2 = va_s1_s2[1].eval()
-  if text_type(s1) == text_type(s2):
+  if str(s1) == str(s2):
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
 def foo_stricmp(track, memory, va_s1_s2):
   s1 = va_s1_s2[0].eval()
   s2 = va_s1_s2[1].eval()
-  if text_type(s1).lower() == text_type(s2).lower():
+  if str(s1).lower() == str(s2).lower():
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
@@ -1074,7 +1070,7 @@ def foo_substr(track, memory, va_s_m_n):
     return EvaluatorAtom('', bool(s))
   if m < 0:
     m = 0
-  s_str = text_type(s)
+  s_str = str(s)
   s_len = len(s_str)
   result = None
   if n > s_len:
@@ -1089,14 +1085,14 @@ def foo_substr(track, memory, va_s_m_n):
 
 def foo_strip_swap_prefix(va_x_prefixN, should_swap):
   x = va_x_prefixN[0].eval()
-  x_str = text_type(x)
+  x_str = str(x)
   x_str_lower = x_str.lower()
 
   for i in range(1, len(va_x_prefixN)):
     prefix = va_x_prefixN[i]
 
     try:
-      prefix = text_type(prefix.eval())
+      prefix = str(prefix.eval())
     except AttributeError:
       pass
 
@@ -1126,7 +1122,7 @@ def foo_swapprefix_arityN(track, memory, va_x_prefixN):
 
 def foo_trim(track, memory, va_s):
   s = va_s[0].eval()
-  return EvaluatorAtom(text_type(s).strip(), bool(s))
+  return EvaluatorAtom(str(s).strip(), bool(s))
 
 def foo_tab_arity0(track, memory, va):
   return '\t'
@@ -1139,13 +1135,13 @@ def foo_tab_arity1(track, memory, va_n):
 
 def foo_upper(track, memory, va_s):
   s = va_s[0].eval()
-  return EvaluatorAtom(text_type(s).upper(), bool(s))
+  return EvaluatorAtom(str(s).upper(), bool(s))
 
 def foo_meta_arity1(track, memory, va_name):
   return foo_meta_sep_arity2(track, memory, va_name + [', '])
 
 def foo_meta_arity2(track, memory, va_name_n):
-  name = text_type(va_name_n[0].eval())
+  name = str(va_name_n[0].eval())
   n = __foo_va_conv_n_lazy_int(va_name_n[1])
   if n < 0:
     return False
@@ -1163,11 +1159,11 @@ def foo_meta_arity2(track, memory, va_name_n):
   return EvaluatorAtom(value, True)
 
 def foo_meta_sep_arity2(track, memory, va_name_sep):
-  name = text_type(va_name_sep[0].eval())
+  name = str(va_name_sep[0].eval())
 
   sep = va_name_sep[1]
   try:
-    sep = text_type(sep.eval())
+    sep = str(sep.eval())
   except AttributeError:
     pass
 
@@ -1181,9 +1177,9 @@ def foo_meta_sep_arity2(track, memory, va_name_sep):
   return EvaluatorAtom(value, True)
 
 def foo_meta_sep_arity3(track, memory, va_name_sep_lastsep):
-  name = text_type(va_name_sep_lastsep[0].eval())
-  sep = text_type(va_name_sep_lastsep[1].eval())
-  lastsep = text_type(va_name_sep_lastsep[2].eval())
+  name = str(va_name_sep_lastsep[0].eval())
+  sep = str(va_name_sep_lastsep[1].eval())
+  lastsep = str(va_name_sep_lastsep[2].eval())
   value = track.get(name)
   if not value:
     value = track.get(name.upper())
@@ -1198,7 +1194,7 @@ def foo_meta_sep_arity3(track, memory, va_name_sep_lastsep):
 
 def foo_meta_test(track, memory, va_nameN):
   for each in va_nameN:
-    name = text_type(each.eval())
+    name = str(each.eval())
     value = track.get(name)
     if not value:
       value = track.get(name.upper())
@@ -1207,7 +1203,7 @@ def foo_meta_test(track, memory, va_nameN):
   return EvaluatorAtom(1, True)
 
 def foo_meta_num(track, memory, va_name):
-  name = text_type(va_name[0].eval())
+  name = str(va_name[0].eval())
   value = track.get(name)
   if not value:
     value = track.get(name.upper())
@@ -1219,7 +1215,7 @@ def foo_meta_num(track, memory, va_name):
 
 def foo_get(track, memory, va_name):
   name = va_name[0].eval()
-  name_str = text_type(name)
+  name_str = str(name)
   if name_str == '':
     return False
   value = memory.get(name_str)
@@ -1228,10 +1224,10 @@ def foo_get(track, memory, va_name):
   return False
 
 def foo_put(track, memory, va_name_value):
-  name = text_type(va_name_value[0].eval())
+  name = str(va_name_value[0].eval())
   value = va_name_value[1].eval()
   if name != '':
-    memory[name] = text_type(value)
+    memory[name] = str(value)
   return value
 
 def foo_puts(track, memory, va_name_value):
@@ -1390,13 +1386,13 @@ def vcallmarshal(atom):
   if atom is None:
     return ('', 0)
 
-  return (text_type(atom), 1 if atom else 0)
+  return (str(atom), 1 if atom else 0)
 
 def vcondmarshal(atom):
   if not atom:
     return ('', 0)
 
-  return (text_type(atom), 1)
+  return (str(atom), 1)
 
 def foobar_filename_escape(output):
   system = platform.system()
