@@ -1585,7 +1585,15 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
 
   conds, evals, i, soff, offstart = 0, 0, 0, -1, 0
   output = []
-  compiled = []
+
+  if compiling:
+    do_var = compile_var
+    #do_var, do_func, do_cond = compile_var, compile_func, compile_cond
+    compiled = []
+  else:
+    do_var = interpret_var
+    #do_var, do_func, do_cond = interpret_var, interpret_func, interpret_cond
+    compiled = None
 
   try:
     label .begin
@@ -1605,7 +1613,10 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
         soff = 0
         i += 1  # Fall through
       else:
-        goto ._variable
+        i, evals = do_var(
+            fmt, track, i, evals, output, compiled, depth, case_sensitive,
+            magic, for_filename)
+        goto .begin
     elif c == '$':
       if fmt[i] == '$':
         soff = 0
@@ -1634,26 +1645,6 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
       i = len(fmt)
       goto .end
     goto .begin  # End outer loop
-
-    label ._variable
-    if compiling and output:
-      compiled.append(lambda t, output=''.join(output): (output, 0))
-      output.clear()
-    start = i
-    i = fmt.index('%', i)
-    if compiling:
-      compiled.append(
-          lambda t, current=fmt[start:i], i=i, depth=depth:
-            handle_var_resolution(t, current, i, depth, case_sensitive,
-              magic, for_filename))
-    else:
-      val, edelta = handle_var_resolution(
-          track, fmt[start:i], i, depth, case_sensitive, magic,
-          for_filename)
-      output.append(val)
-      evals += edelta
-    i += 1
-    goto .begin  # End ._variable
 
     label ._function
     if compiling and output:
@@ -1842,6 +1833,39 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
 
   return result
 
+
+def interpret_var(
+    fmt, track, i, evals, output, compiled, depth, case_sensitive, magic,
+    for_filename):
+  start = i
+  i = fmt.index('%', i)
+
+  val, edelta = handle_var_resolution(
+      track, fmt[start:i], depth, case_sensitive, magic, for_filename)
+
+  output.append(val)
+  return i + 1, evals + edelta
+
+
+def compile_var(
+    fmt, track, i, evals, output, compiled, depth, case_sensitive, magic,
+    for_filename):
+  if output:
+    joined_output = ''.join(output)
+    compiled.append(lambda t: (joined_output, 0))
+    output.clear()
+
+  start = i
+  i = fmt.index('%', i)
+
+  compiled.append(
+      lambda t, current=fmt[start:i]:
+        handle_var_resolution(
+            t, current, depth, case_sensitive, magic, for_filename))
+
+  return i + 1, None
+
+
 def invoke_jit_eval(compiled, depth, track):
   output = ''
   eval_count = 0
@@ -1859,7 +1883,7 @@ def flush_compilation(compiling, compiled, output):
     output.clear()
 
 def handle_var_resolution(
-    track, field, i, depth, case_sensitive, magic, for_filename):
+    track, field, depth, case_sensitive, magic, for_filename):
   if not case_sensitive:
     field = field.upper()
 
