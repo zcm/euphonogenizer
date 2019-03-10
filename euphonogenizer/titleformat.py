@@ -16,6 +16,8 @@ import re
 import sys
 import unicodedata
 
+from goto import with_goto
+
 from .common import dbg
 
 
@@ -1574,6 +1576,7 @@ def format(track, fmt):
 def compile(fmt):
   return _eval(None, fmt, compiling=True)
 
+@with_goto
 def _eval(track, fmt, conditional=False, depth=0, offset=0,
     memory={}, compiling=False, case_sensitive=False, magic=True,
     for_filename=False, compatible=True, ccache=default_ccache):
@@ -1585,75 +1588,235 @@ def _eval(track, fmt, conditional=False, depth=0, offset=0,
   compiled = []
 
   try:
+    label .begin
+    c = fmt[i]
+    i += 1
+    if c == "'":
+      if fmt[i] == "'":
+        soff = 0
+        i += 1  # Fall through
+      else:
+        start = i
+        i = fmt.index("'", i) + 1
+        output.append(fmt[start:i-1])
+        goto .begin
+    elif c == '%':
+      if fmt[i] == '%':
+        soff = 0
+        i += 1  # Fall through
+      else:
+        goto ._variable
+    elif c == '$':
+      if fmt[i] == '$':
+        soff = 0
+        i += 1  # Fall through
+      else:
+        goto ._function
+    elif c == '[':
+      goto ._conditional
+    elif c == ']':
+      if compatible:
+        goto .end
+      else:
+        raise TitleformatError(backwards_error(']', '[', offset, i))
+    elif c in '()' and compatible:
+      # This seems like a foobar bug; parens shouldn't do anything outside
+      # of a function call, but foobar will just explode if it sees a lone
+      # paren floating around in the input.
+      goto .end
+    match = next_token.search(fmt, i + soff)
+    if match:
+      output.append(fmt[i-1:match.start()])
+      soff = -1
+      i = match.start()
+    else:
+      output.append(fmt[i-1:])
+      i = len(fmt)
+      goto .end
+    goto .begin  # End outer loop
+
+    label ._variable
+    if compiling and output:
+      compiled.append(lambda t, output=''.join(output): (output, 0))
+      output.clear()
+    start = i
+    i = fmt.index('%', i)
+    if compiling:
+      compiled.append(
+          lambda t, current=fmt[start:i], i=i, depth=depth:
+            handle_var_resolution(t, current, i, depth, case_sensitive,
+              magic, for_filename))
+    else:
+      val, edelta = handle_var_resolution(
+          track, fmt[start:i], i, depth, case_sensitive, magic,
+          for_filename)
+      output.append(val)
+      evals += edelta
+    i += 1
+    goto .begin  # End ._variable
+
+    label ._function
+    if compiling and output:
+      compiled.append(lambda t, output=''.join(output): (output, 0))
+      output.clear()
+    state, argparens, innerparens = 0x0, 0, 0
+    foffstart = i + 1
+    current = []
+    current_argv = []
     while 1:
       c = fmt[i]
       i += 1
-      if c == "'":
-        if fmt[i] == "'":
-          soff = 0
-          i += 1  # Fall through
-        else:
-          start = i
-          i = fmt.index("'", i) + 1
-          output.append(fmt[start:i-1])
-          continue
-      elif c == '%':
-        if fmt[i] == '%':
-          soff = 0
-          i += 1  # Fall through
-        else:
-          if compiling and output:
-            compiled.append(lambda t, output=''.join(output): (output, 0))
-            output.clear()
-          start = i
-          i = fmt.index('%', i)
-          if compiling:
-            compiled.append(
-                lambda t, current=fmt[start:i], i=i, depth=depth:
-                  handle_var_resolution(t, current, i, depth, case_sensitive,
-                    magic, for_filename))
-          else:
-            val, edelta = handle_var_resolution(
-                track, fmt[start:i], i, depth, case_sensitive, magic,
-                for_filename)
-            output.append(val)
-            evals += edelta
-          i += 1
-          continue
-      elif c == '$':
-        if fmt[i] == '$':
-          soff = 0
-          i += 1  # Fall through
-        else:
-          i, evals, offset, offstart = _function(
-              track, fmt, i, depth, compiling, compiled, output, evals,
-              offset, offstart, memory, case_sensitive, magic, for_filename,
-              compatible, ccache)
-          continue
-      elif c == '[':
-        i, evals = _conditional(
-            track, fmt, i, depth, compiling, compiled, output, evals,
-            offset, offstart, memory)
-        continue
-      elif c == ']':
+      if c.isalnum() or c == '_':
+        current.append(c)
+      elif c == '(':
+        current_fn = ''.join(current)
+        current.clear()
+        state = 0x1
+        off = i + 1
+        break
+      else:
         if compatible:
           break
-        else:
-          raise TitleformatError(backwards_error(']', '[', offset, i))
-      elif c in '()' and compatible:
-        # This seems like a foobar bug; parens shouldn't do anything outside
-        # of a function call, but foobar will just explode if it sees a lone
-        # paren floating around in the input.
-        break
-      match = next_token.search(fmt, i + soff)
-      if match:
-        output.append(fmt[i-1:match.start()])
-        soff = -1
-        i = match.start()
+        raise TitleformatError(
+            "Illegal token '%s' encountered at char %s" % (c, i))
+    if not state:
+      raise StopIteration()
+    while 1:
+      c = fmt[i]
+      i += 1
+      if not argparens:
+        if c == ')':
+          if current or current_argv:
+            goto .parse_argument
+
+          label .finish_arglist
+          if compiling:
+            compiled.append(compile_fn_call(
+              current_fn, current_argv, depth,
+              offset + foffstart))
+          else:
+            val, edelta = handle_fn_invocation(
+                track, current_fn, current_argv, depth, offset + foffstart,
+                memory)
+            if val:
+              output.append(val)
+            evals += edelta
+          state = 0x0
+          break
+        elif c == ',':
+          label .parse_argument  # This label avoids a huge function call
+          current_argv.append(
+              # The lazy expression will parse the buffer if it's ever needed.
+              LazyCompilation(
+                  ''.join(current), False, depth + 1, offset + offstart,
+                  memory, case_sensitive, magic, for_filename, compatible,
+                  ccache)
+              if compiling else LazyExpression(
+                  track, ''.join(current), False, depth + 1, offset + offstart,
+                  memory, case_sensitive, magic, for_filename, compatible,
+                  ccache))
+          current.clear()
+          # I know this looks impossible but the previous block can jump here
+          if c == ')':
+            goto .finish_arglist
+          offstart = i + 1
+          continue
+      if c == "'":  # Literal within arglist
+        start = i
+        i = fmt.index("'", i) + 1
+        current.append(fmt[start-1:i])
+      elif c == '$':  # Nested function call
+        start = i
+        innerparens = 0
+        it = next_paren_token.finditer(fmt[i:])
+        while 1:
+          match = next(it)
+          c = match.group()
+          if c == '(':
+            innerparens += 1
+          elif c == "'":
+            match = next(it)
+            while match.group() != "'":
+              match = next(it)
+          elif c == ')':
+            innerparens -= 1
+            if not innerparens:  # Stop skipping evaluation.
+              i += match.end()
+              current.append(fmt[start-1:i])
+              break
+            elif innerparens < 0:
+              if compatible:
+                raise StopIteration()
+              else:
+                raise TitleformatError(backwards_error(')', '(', offset, i))
+      elif c == '(':  # "Paren poisoning" -- due to weird foobar parsing logic
+        argparens += 1
+        while 1:  # Skip to next arg or matching paren, whichever comes first
+          c = fmt[i]
+          if c == '(':
+            argparens += 1
+          elif not argparens:
+            if c in ',)':
+              # Resume normal execution
+              break
+          elif c == ')':
+            argparens -= 1
+          i += 1  # Only need to do this if we're not actually breaking
       else:
-        output.append(fmt[i-1:])
-        i = len(fmt)
-        break
+        # This is a critical section. I've tried the following approaches and
+        # benchmarked them to find the fastest ones:
+        #     1. Regular expression match groups (this one)
+        #     2. Increment the index counter until you find it
+        #     3. Use next() with a comprehension to assign the index counter
+        #     4. Use min() and str.find() to find the lowest index
+        #     5. Reduce min() over a map of a sliced fmt with a filter
+        # #1 is overall very good and asymptotically the fastest. #2 is faster
+        # for very short sequences by about 4%, making it better for the unit
+        # tests, but overall not worth it. Everything else just performs worse
+        # somehow in the formatter, even if it benchmarks well outside it.
+        match = next_inner_token.search(fmt, i)
+        i = match.start()  # Don't check, just let this raise AttributeError!
+        current.append(fmt[match.pos-1:i])
+    if state:
+      raise StopIteration()
+    goto .begin  # End ._function
+
+    label ._conditional
+    flush_compilation(compiling, compiled, output)
+    conds = 0
+    start = i
+    while 1:
+      c = fmt[i]
+      i += 1
+      if c == '[':
+          conds += 1
+      elif c == ']':
+        if conds > 0:
+          conds -= 1
+        else:
+          if compiling:
+            compiled_cond = _eval(
+                None, fmt[start:i-1], True, depth + 1, offset + offstart,
+                memory, True)
+            compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
+          else:
+            evaluated_value = _eval(
+                track, fmt[start:i-1], True, depth + 1, offset + offstart,
+                memory)
+
+            if evaluated_value:
+              output.append(str(evaluated_value))
+              evals += 1
+
+          break
+      elif c == "'":
+        i = fmt.index("'", i) + 1
+      else:
+        match = next_cond_token.search(fmt, i)
+        i = match.start()
+    goto .begin  # End ._conditional
+
+    label .end
   except (IndexError, ValueError, AttributeError, StopIteration) as e:
     #print(f'Caught {e.__class__.__name__}, ignoring: {e}')
     pass
@@ -1694,181 +1857,6 @@ def flush_compilation(compiling, compiled, output):
   if compiling and output:
     compiled.append(lambda t, output=''.join(output): (output, 0))
     output.clear()
-
-def _function(
-    track, fmt, i, depth, compiling, compiled, output, evals, offset, offstart,
-    memory, case_sensitive, magic, for_filename, compatible, ccache):
-  if compiling and output:
-    compiled.append(lambda t, output=''.join(output): (output, 0))
-    output.clear()
-  state, argparens, innerparens = 0x0, 0, 0
-  foffstart = i + 1
-  current = []
-  current_argv = []
-  while 1:
-    c = fmt[i]
-    i += 1
-    if c.isalnum() or c == '_':
-      current.append(c)
-    elif c == '(':
-      current_fn = ''.join(current)
-      current.clear()
-      state = 0x1
-      off = i + 1
-      break
-    else:
-      if compatible:
-        break
-      raise TitleformatError(
-          "Illegal token '%s' encountered at char %s" % (c, i))
-  if not state:
-    raise StopIteration()
-  while 1:
-    c = fmt[i]
-    i += 1
-    if not argparens:
-      if c == ',':
-        current_argv.append(parse_fn_arg(
-            track, current_fn, current, current_argv, c, i, depth,
-            offset + offstart, memory, compiling, case_sensitive, magic,
-            for_filename, compatible, ccache))
-        current.clear()
-        offstart = i + 1
-        continue
-      elif c == ')':
-        if current or current_argv:
-          current_argv.append(parse_fn_arg(
-              track, current_fn, current, current_argv, c, i, depth,
-              offset + offstart, memory, compiling, case_sensitive, magic,
-              for_filename, compatible, ccache))
-          current.clear()
-
-        if compiling:
-          compiled.append(compile_fn_call(
-            current_fn, current_argv, depth,
-            offset + foffstart))
-        else:
-          val, edelta = handle_fn_invocation(
-              track, current_fn, current_argv, depth, offset + foffstart,
-              memory)
-
-          if val:
-            output.append(val)
-
-          evals += edelta
-
-        state = 0x0
-        break
-    if c == "'":  # Literal within arglist
-      start = i
-      i = fmt.index("'", i) + 1
-      current.append(fmt[start-1:i])
-    elif c == '$':  # Nested function call
-      start = i
-      innerparens = 0
-      it = next_paren_token.finditer(fmt[i:])
-      while 1:
-        match = next(it)
-        c = match.group()
-        if c == '(':
-          innerparens += 1
-        elif c == "'":
-          match = next(it)
-          while match.group() != "'":
-            match = next(it)
-        elif c == ')':
-          innerparens -= 1
-          if not innerparens:  # Stop skipping evaluation.
-            i += match.end()
-            current.append(fmt[start-1:i])
-            break
-          elif innerparens < 0:
-            if compatible:
-              raise StopIteration()
-            else:
-              raise TitleformatError(backwards_error(')', '(', offset, i))
-    elif c == '(':  # "Paren poisoning" -- due to weird foobar parsing logic
-      argparens += 1
-      while 1:  # Skip to next arg or matching paren, whichever comes first
-        c = fmt[i]
-        if c == '(':
-          argparens += 1
-        elif not argparens:
-          if c in ',)':
-            # Resume normal execution
-            break
-        elif c == ')':
-          argparens -= 1
-        i += 1  # Only need to do this if we're not actually breaking
-    else:
-      # This is a critical section. I've tried the following approaches and
-      # benchmarked them to find the fastest ones:
-      #     1. Regular expression match groups (this one)
-      #     2. Increment the index counter until you find it
-      #     3. Use next() with a comprehension to assign the index counter
-      #     4. Use min() and str.find() to find the lowest index
-      #     5. Reduce min() over a map of a sliced fmt with a filter
-      # #1 is overall very good and asymptotically the fastest. #2 is faster
-      # for very short sequences by about 4%, making it better for the unit
-      # tests, but overall not worth it. Everything else just performs worse
-      # somehow in the formatter, even if it benchmarks well outside it.
-      match = next_inner_token.search(fmt, i)
-      i = match.start()  # Don't check, just let this raise AttributeError!
-      current.append(fmt[match.pos-1:i])
-  if state:
-    raise StopIteration()
-  return i, evals, offset, offstart
-
-def _conditional(
-    track, fmt, i, depth, compiling, compiled, output, evals,
-    offset, offstart, memory):
-  flush_compilation(compiling, compiled, output)
-  conds = 0
-  start = i
-  while 1:
-    c = fmt[i]
-    i += 1
-    if c == '[':
-        conds += 1
-    elif c == ']':
-      if conds > 0:
-        conds -= 1
-      else:
-        if compiling:
-          compiled_cond = _eval(
-              None, fmt[start:i-1], True, depth + 1, offset + offstart,
-              memory, True)
-          compiled.append(lambda t, c=compiled_cond: vcondmarshal(c(t)))
-        else:
-          evaluated_value = _eval(
-              track, fmt[start:i-1], True, depth + 1, offset + offstart,
-              memory)
-
-          if evaluated_value:
-            output.append(str(evaluated_value))
-            evals += 1
-
-        return i, evals
-    elif c == "'":
-      i = fmt.index("'", i) + 1
-    else:
-      match = next_cond_token.search(fmt, i)
-      i = match.start()
-
-def parse_fn_arg(track, current_fn, current, current_argv, c, i,
-    depth, offset, memory, compiling, case_sensitive, magic, for_filename,
-    compatible, ccache):
-  current = ''.join(current)
-
-  if compiling:
-    return LazyCompilation(
-        current, False, depth + 1, offset, memory, case_sensitive, magic,
-        for_filename, compatible, ccache)
-
-  # The lazy expression will parse the current buffer if it's ever needed.
-  return LazyExpression(
-      track, current, False, depth + 1, offset, memory, case_sensitive, magic,
-      for_filename, compatible, ccache)
 
 def handle_var_resolution(
     track, field, i, depth, case_sensitive, magic, for_filename):
