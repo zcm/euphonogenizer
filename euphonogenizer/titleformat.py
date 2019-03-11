@@ -156,8 +156,8 @@ def magic_map_filename_ext(formatter, track):
   return None
 
 def magic_map_track_artist(formatter, track):
-  artist = formatter.magic_resolve_variable(track, 'artist')
-  album_artist = formatter.magic_resolve_variable(track, 'album artist')
+  artist = resolve_magic_var(track, 'artist')
+  album_artist = resolve_magic_var(track, 'album artist')
   if artist != album_artist:
     return artist
   return None
@@ -1589,7 +1589,7 @@ def interpret_var(
   start = i
   i = fmt.index('%', i)
 
-  val, edelta = handle_var_resolution(
+  val, edelta = resolve_var(
       track, fmt[start:i], depth, case_sensitive, magic, for_filename)
 
   output.append(val)
@@ -1607,7 +1607,7 @@ def compile_var(
 
   compiled.append(
       lambda t, current=fmt[start:i]:
-        handle_var_resolution(
+        resolve_var(
             t, current, depth, case_sensitive, magic, for_filename))
 
   return i + 1, offset, offstart, None
@@ -1932,8 +1932,7 @@ def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
     if output:
       # We need to flush the output buffer to a lambda once more
       compiled.append(lambda t, output=''.join(output): (output, 0))
-    ccache[fmt] = (lambda t, compiled=compiled, depth=depth:
-      invoke_jit_eval(compiled, depth, t))
+    ccache[fmt] = lambda t: run_compiled(compiled, t)
     return ccache[fmt]
 
   output = ''.join(output)
@@ -1946,19 +1945,22 @@ def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
   return result
 
 
-def invoke_jit_eval(compiled, depth, track):
-  output = ''
+def run_compiled(compiled, track):
+  output = []
   eval_count = 0
 
   for c in compiled:
     c_output, c_count = c(track)
-    output += c_output
+    output.append(c_output)
     eval_count += c_count
 
-  return EvaluatorAtom(output, eval_count != 0)
+  return EvaluatorAtom(''.join(output), eval_count != 0)
 
-def handle_var_resolution(
-    track, field, depth, case_sensitive, magic, for_filename):
+
+def resolve_var(track, field, depth, case_sensitive, magic, for_filename):
+  if track is None:
+    return ('', 0)
+
   if not case_sensitive:
     field = field.upper()
 
@@ -1967,7 +1969,7 @@ def handle_var_resolution(
   if not magic:
     resolved = track.get(field)
   else:
-    resolved = magic_resolve_variable(track, field, depth, case_sensitive)
+    resolved = resolve_magic_var(track, field, depth, case_sensitive)
 
   if resolved:
     if for_filename:
@@ -1985,7 +1987,7 @@ def handle_var_resolution(
           else ('?', 0))
 
 
-def magic_resolve_variable(track, field, depth, case_sensitive):
+def resolve_magic_var(track, field, depth, case_sensitive):
   field_lower = field.lower()
   if field_lower in magic_mappings:
     mapping = magic_mappings[field_lower]
@@ -2003,11 +2005,13 @@ def magic_resolve_variable(track, field, depth, case_sensitive):
   # Still couldn't find it.
   return track.get(field)
 
+
 def compile_fn_call(current_fn, current_argv, depth, offset):
   fn = vlookup(current_fn, len(current_argv))
   return (lambda t, fn=fn, argv=current_argv:
     vcallmarshal(vmarshal(
       fn(t, {}, [x.curry(t) if hasattr(x, 'curry') else x for x in argv]))))
+
 
 def invoke_function(
     track, function_name, function_argv, depth, offset, memory):
