@@ -1670,7 +1670,7 @@ def construe_func(
     fmt, i, track, evals, container, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     do_arg, do_arglist):
-  within_arglist, argparens, innerparens = False, 0, 0
+  argparens, innerparens = 0, 0
   foffstart = i + 1
   start = i
 
@@ -1700,10 +1700,9 @@ def construe_func(
           do_arg(''.join(current), track, arglist, depth + 1, offset + offstart,
               memory, case_sensitive, magic, for_filename, compatible, ccache)
 
-        evals = do_arglist(
+        return i, offset, offstart, do_arglist(
             track, evals, current_fn, arglist, container, depth,
             offset + foffstart, memory)
-        within_arglist = False
         break
       elif c == ',':
         do_arg(''.join(current), track, arglist, depth + 1, offset + offstart,
@@ -1767,9 +1766,7 @@ def construe_func(
       match = next_inner_token.search(fmt, i)
       i = match.start()  # Don't check, just let this raise AttributeError!
       current.append(fmt[match.pos-1:i])
-  if within_arglist:
-    raise StopIteration()
-  return i, offset, offstart, evals
+  raise StopIteration()
 
 
 def interpret_cond(
