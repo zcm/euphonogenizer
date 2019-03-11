@@ -1672,28 +1672,23 @@ def construe_func(
     do_arg, do_arglist):
   within_arglist, argparens, innerparens = False, 0, 0
   foffstart = i + 1
-  current = []
+  start = i
 
   while True:
     c = fmt[i]
     i += 1
-    if c.isalnum() or c == '_':
-      current.append(c)
-    elif c == '(':
-      current_fn = ''.join(current)
-      current.clear()
+    if c == '(':
+      current_fn = fmt[start:i-1]
       within_arglist = True
       offset = i + 1
       break
-    else:
+    elif not c.isalnum() and c != '_':
       if compatible:
-        break
-      raise TitleformatError(
-          "Illegal token '%s' encountered at char %s" % (c, i))
+        raise StopIteration()
+      else:
+        raise TitleformatError(f'Illegal token "{c}" encountered at char {i}')
 
-  if not within_arglist:
-    raise StopIteration()
-
+  current = []
   arglist = []
 
   while True:
