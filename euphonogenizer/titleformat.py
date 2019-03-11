@@ -1478,19 +1478,6 @@ class CurriedCompilation(object):
     return 'curriedcomp(%s)' % repr(self.lazycomp)
 
 
-def nop(*args, **kwargs):
-  pass
-
-def dbglog(fmt, *args, **kwargs):
-  try:
-    dbg(fmt(), **kwargs)
-  except TypeError:
-    if args:
-      dbg(fmt % args, **kwargs)
-    else:
-      dbg(fmt, **kwargs)
-
-
 class LazyCompilation(object):
   __slots__ = (
       'current', 'conditional', 'depth', 'offset', 'memory', 'case_sensitive',
