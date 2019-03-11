@@ -1339,7 +1339,7 @@ class TestTitleFormat:
     if compiled:
       result = titleformat.compile(fmt)(track)
     else:
-      result = titleformat.format(track, fmt)
+      result = titleformat.format(fmt, track)
 
     assert result.value == expected
     assert result.truth is expected_truth
@@ -1348,7 +1348,7 @@ class TestTitleFormat:
   def test_eval_ansi_encoding(self, block):
     unicode_input, expected_ansi, _ = encoding_tests[block]
 
-    result_ansi = titleformat.format(None, "$ansi('%s')" % unicode_input)
+    result_ansi = titleformat.format(f"$ansi('{unicode_input}')", None)
 
     assert result_ansi.value == expected_ansi
     assert not result_ansi.truth
@@ -1357,7 +1357,7 @@ class TestTitleFormat:
   def test_eval_ascii_encoding(self, block):
     unicode_input, _, expected_ascii = encoding_tests[block]
 
-    result_ascii = titleformat.format(None, "$ascii('%s')" % unicode_input)
+    result_ascii= titleformat.format(f"$ascii('{unicode_input}')", None)
 
     assert result_ascii.value == expected_ascii
     assert not result_ascii.truth

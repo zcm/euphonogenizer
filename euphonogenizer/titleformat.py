@@ -1413,15 +1413,15 @@ def foobar_filename_escape(output):
 
 class LazyExpression:
   __slots__ = (
-      'track', 'current', 'conditional', 'depth', 'offset', 'memory',
+      'fmt', 'track', 'conditional', 'depth', 'offset', 'memory',
       'case_sensitive', 'magic', 'for_filename', 'compatible', 'ccache',
       'value', 'evaluated')
 
   def __init__(self,
-      track, expression, conditional, depth, offset, memory, case_sensitive,
-      magic, for_filename, compatible, ccache):
+      fmt, track, conditional, depth, offset, memory, case_sensitive, magic,
+      for_filename, compatible, ccache):
+    self.fmt = fmt
     self.track = track
-    self.current = expression
     self.conditional = conditional
     self.depth = depth
     self.offset = offset
@@ -1437,16 +1437,16 @@ class LazyExpression:
   def eval(self):
     if not self.evaluated:
       self.value = _eval(
-          self.track, self.current, self.conditional, self.depth, self.offset,
-          self.memory)
+          self.fmt, self.track, _interpreter_vtable, self.conditional,
+          self.depth, self.offset, self.memory)
       self.evaluated = True
     return self.value
 
   def __str__(self):
-    return self.current
+    return self.fmt
 
   def __repr__(self):
-    return "lazy(%s)" % repr(self.current)
+    return "lazy(%s)" % repr(self.fmt)
 
 
 class CurriedCompilation(object):
@@ -1516,8 +1516,8 @@ class LazyCompilation(object):
   def eval(self, track):
     if self.codeblock is None:
       self.codeblock = _eval(
-          None, self.current, self.conditional, self.depth, self.offset,
-          self.memory, True)
+          self.current, None, _compiler_vtable, self.conditional, self.depth,
+          self.offset, self.memory)
     return self.codeblock(track)
 
   def __call__(self, track):
@@ -1568,118 +1568,24 @@ next_paren_token = re.compile(r"[(')]")
 next_cond_token = re.compile(r"['\[\]]")
 
 
-def format(track, fmt):
-  return _eval(track, fmt)
-
-def compile(fmt):
-  return _eval(None, fmt, compiling=True)
-
-def _eval(track, fmt, conditional=False, depth=0, offset=0,
-    memory={}, compiling=False, case_sensitive=False, magic=True,
-    for_filename=False, compatible=True, ccache=default_ccache):
-  if fmt in ccache:
-    return ccache[fmt] if compiling else ccache[fmt](track)
-
-  evals, i, soff, offstart = 0, 0, -1, 0
-  output = []
-
-  if compiling:
-    do_var, do_func, do_cond = compile_var, compile_func, compile_cond
-    compiled = []
-  else:
-    do_var, do_func, do_cond = interpret_var, interpret_func, interpret_cond
-    compiled = None
-
-  try:
-    while True:
-      c = fmt[i]
-      i += 1
-      if c == "'":
-        if fmt[i] == "'":
-          soff = 0
-          i += 1  # Fall through
-        else:
-          start = i
-          i = fmt.index("'", i) + 1
-          output.append(fmt[start:i-1])
-          continue
-      elif c == '%':
-        if fmt[i] == '%':
-          soff = 0
-          i += 1  # Fall through
-        else:
-          i, evals = do_var(
-              fmt, i, track, evals, output, compiled, depth, case_sensitive,
-              magic, for_filename)
-          continue
-      elif c == '$':
-        if fmt[i] == '$':
-          soff = 0
-          i += 1  # Fall through
-        else:
-          i, evals, offset, offstart = do_func(
-              fmt, i, track, evals, output, compiled, depth, offset, offstart,
-              memory, case_sensitive, magic, for_filename, compatible, ccache)
-          continue
-      elif c == '[':
-        i, evals = do_cond(
-            fmt, i, track, evals, output, compiled, depth, offset + offstart,
-            memory, case_sensitive, magic, for_filename, compatible, ccache)
-        continue
-      elif c == ']':
-        if compatible:
-          break
-        else:
-          raise TitleformatError(backwards_error(']', '[', offset, i))
-      elif c in '()' and compatible:
-        # This seems like a foobar bug; parens shouldn't do anything outside
-        # of a function call, but foobar will just explode if it sees a lone
-        # paren floating around in the input.
-        break
-      match = next_token.search(fmt, i + soff)
-      if match:
-        output.append(fmt[i-1:match.start()])
-        soff = -1
-        i = match.start()
-      else:
-        output.append(fmt[i-1:])
-        i = len(fmt)
-        break
-  except (IndexError, ValueError, AttributeError, StopIteration) as e:
-    #print(f'Caught {e.__class__.__name__}, ignoring: {e}')
-    pass
-
-  # At this point, we have reached the end of the input.
-  if i < len(fmt) and not compatible:
-      raise TitleformatError(state_errors[c](offset, i))
-
-  if compiling:
-    if output:
-      # We need to flush the output buffer to a lambda once more
-      compiled.append(lambda t, output=''.join(output): (output, 0))
-    ccache[fmt] = (lambda t, compiled=compiled, depth=depth:
-      invoke_jit_eval(compiled, depth, t))
-    return ccache[fmt]
-
-  output = ''.join(output)
-
-  if not depth and for_filename:
-    output = foobar_filename_escape(output)
-
-  result = EvaluatorAtom(output, bool(evals))
-
-  return result
-
-
 def flush_output(output, compiled):
   joined_output = ''.join(output)
   compiled.append(lambda t: (joined_output, 0))
   output.clear()
 
 
+def parse_literal(
+    fmt, i, track, evals, output, compiled, depth, offset, offstart,
+    memory, case_sensitive, magic, for_filename, compatible, ccache):
+  start = i
+  i = fmt.index("'", i) + 1
+  output.append(fmt[start:i-1])
+  return i, offset, offstart, evals
+
+
 def interpret_var(
-    fmt, i, track, evals, output, compiled, depth, case_sensitive, magic,
-    for_filename):
+    fmt, i, track, evals, output, compiled, depth, offset, offstart,
+    memory, case_sensitive, magic, for_filename, compatible, ccache):
   start = i
   i = fmt.index('%', i)
 
@@ -1687,12 +1593,12 @@ def interpret_var(
       track, fmt[start:i], depth, case_sensitive, magic, for_filename)
 
   output.append(val)
-  return i + 1, evals + edelta
+  return i + 1, offset, offstart, evals + edelta
 
 
 def compile_var(
-    fmt, i, track, evals, output, compiled, depth, case_sensitive, magic,
-    for_filename):
+    fmt, i, track, evals, output, compiled, depth, offset, offstart,
+    memory, case_sensitive, magic, for_filename, compatible, ccache):
   if output:
     flush_output(output, compiled)
 
@@ -1704,14 +1610,14 @@ def compile_var(
         handle_var_resolution(
             t, current, depth, case_sensitive, magic, for_filename))
 
-  return i + 1, None
+  return i + 1, offset, offstart, None
 
 
 def interpret_func(
     fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache):
   return construe_func(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, output, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     interpret_arg, interpret_arglist)
 
@@ -1722,33 +1628,31 @@ def compile_func(
   if output:
     flush_output(output, compiled)
   return construe_func(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     compile_arg, compile_arglist)
 
 
 def interpret_arg(
-    track, current, arglist, depth, offset, memory, case_sensitive, magic,
+    fmt, track, arglist, depth, offset, memory, case_sensitive, magic,
     for_filename, compatible, ccache):
   arglist.append(
       LazyExpression(
-          track, ''.join(current), False, depth, offset, memory,
+          fmt, track, False, depth, offset, memory,
           case_sensitive, magic, for_filename, compatible, ccache))
-  current.clear()
 
 
 def compile_arg(
-    track, current, arglist, depth, offset, memory, case_sensitive, magic,
+    fmt, track, arglist, depth, offset, memory, case_sensitive, magic,
     for_filename, compatible, ccache):
   arglist.append(
       LazyCompilation(
-          ''.join(current), False, depth, offset, memory,
+          fmt, False, depth, offset, memory,
           case_sensitive, magic, for_filename, compatible, ccache))
-  current.clear()
 
 
 def interpret_arglist(
-    track, evals, current_fn, arglist, output, compiled, depth, offset, memory):
+    track, evals, current_fn, arglist, output, depth, offset, memory):
   val, edelta = invoke_function(
       track, current_fn, arglist, depth, offset, memory)
   if val:
@@ -1757,13 +1661,13 @@ def interpret_arglist(
 
 
 def compile_arglist(
-    track, evals, current_fn, arglist, output, compiled, depth, offset, memory):
+    track, evals, current_fn, arglist, compiled, depth, offset, memory):
   compiled.append(
       compile_fn_call(current_fn, arglist, depth, offset))
 
 
 def construe_func(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, track, evals, container, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     do_arg, do_arglist):
   within_arglist, argparens, innerparens = False, 0, 0
@@ -1779,7 +1683,7 @@ def construe_func(
       current_fn = ''.join(current)
       current.clear()
       within_arglist = True
-      off = i + 1
+      offset = i + 1
       break
     else:
       if compatible:
@@ -1798,17 +1702,18 @@ def construe_func(
     if not argparens:
       if c == ')':
         if current or arglist:
-          do_arg(track, current, arglist, depth + 1, offset + offstart, memory,
-              case_sensitive, magic, for_filename, compatible, ccache)
+          do_arg(''.join(current), track, arglist, depth + 1, offset + offstart,
+              memory, case_sensitive, magic, for_filename, compatible, ccache)
 
         evals = do_arglist(
-            track, evals, current_fn, arglist, output, compiled, depth,
+            track, evals, current_fn, arglist, container, depth,
             offset + foffstart, memory)
         within_arglist = False
         break
       elif c == ',':
-        do_arg(track, current, arglist, depth + 1, offset + offstart, memory,
-            case_sensitive, magic, for_filename, compatible, ccache)
+        do_arg(''.join(current), track, arglist, depth + 1, offset + offstart,
+            memory, case_sensitive, magic, for_filename, compatible, ccache)
+        current.clear()
         offstart = i + 1
         continue
     if c == "'":  # Literal within arglist
@@ -1869,32 +1774,33 @@ def construe_func(
       current.append(fmt[match.pos-1:i])
   if within_arglist:
     raise StopIteration()
-  return i, evals, offset, offstart
+  return i, offset, offstart, evals
 
 
 def interpret_cond(
-    fmt, i, track, evals, output, compiled, depth, offset, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache):
   return construe_cond(
-    fmt, i, track, evals, output, depth, offset, memory,
+    fmt, i, track, evals, output, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     interpret_cond_contents)
 
 
 def compile_cond(
-    fmt, i, track, evals, output, compiled, depth, offset, memory,
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache):
   if output:
     flush_output(output, compiled)
   return construe_cond(
-    fmt, i, track, evals, compiled, depth, offset, memory,
+    fmt, i, track, evals, compiled, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     compile_cond_contents)
 
 
 def interpret_cond_contents(
     fmt, track, evals, output, depth, offset, memory):
-  evaluated_value = _eval(track, fmt, True, depth, offset, memory)
+  evaluated_value = _eval(
+      fmt, track, _interpreter_vtable, True, depth, offset, memory)
 
   if evaluated_value:
     output.append(str(evaluated_value))
@@ -1904,12 +1810,13 @@ def interpret_cond_contents(
 
 def compile_cond_contents(
     fmt, track, evals, compiled, depth, offset, memory):
-  compiled_cond = _eval(None, fmt, True, depth, offset, memory, True)
+  compiled_cond = _eval(
+      fmt, None, _compiler_vtable, True, depth, offset, memory)
   compiled.append(lambda t: vcondmarshal(compiled_cond(t)))
 
 
 def construe_cond(
-    fmt, i, track, evals, container, depth, offset, memory,
+    fmt, i, track, evals, container, depth, offset, offstart, memory,
     case_sensitive, magic, for_filename, compatible, ccache,
     do_cond_contents):
   conds = 0
@@ -1923,13 +1830,120 @@ def construe_cond(
       if conds:
         conds -= 1
       else:
-        return i, do_cond_contents(
+        return i, offset, offstart, do_cond_contents(
             fmt[start:i-1], track, evals, container, depth + 1, offset, memory)
     elif c == "'":
       i = fmt.index("'", i) + 1
     else:
       match = next_cond_token.search(fmt, i)
       i = match.start()
+
+
+def misplaced_cond(
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache):
+  if compatible:
+    raise StopIteration()
+  else:
+    raise TitleformatError(backwards_error(']', '[', offset, i))
+
+
+def misplaced_paren(
+    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    case_sensitive, magic, for_filename, compatible, ccache):
+  # This seems like a foobar bug; parens shouldn't do anything outside of a
+  # function call, but foobar will just explode if it sees a lone paren floating
+  # around in the input.
+  if compatible:
+    raise StopIteration()
+
+
+_interpreter_vtable = {
+    "'": parse_literal,
+    '%': interpret_var,
+    '$': interpret_func,
+    '[': interpret_cond,
+    ']': misplaced_cond,
+    '(': misplaced_paren,
+    ')': misplaced_paren,
+}
+
+_compiler_vtable = {
+    "'": parse_literal,
+    '%': compile_var,
+    '$': compile_func,
+    '[': compile_cond,
+    ']': misplaced_cond,
+    '(': misplaced_paren,
+    ')': misplaced_paren,
+}
+
+
+def format(fmt, track=None):
+  return _eval(fmt, track, _interpreter_vtable)
+
+
+def compile(fmt):
+  return _eval(fmt, None, _compiler_vtable)
+
+
+def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
+    case_sensitive=False, magic=True, for_filename=False, compatible=True,
+    ccache=default_ccache):
+  if fmt in ccache:
+    return ccache[fmt] if vtable is _compiler_vtable else ccache[fmt](track)
+
+  evals, i, soff, offstart = 0, 0, -1, 0
+  output = []
+  compiled = [] if vtable is _compiler_vtable else None
+
+  try:
+    while True:
+      c = fmt[i]
+      i += 1
+      if c in vtable:
+        if c not in '[]()' and c == fmt[i]:
+          soff = 0
+          i += 1  # Fall through
+        else:
+          i, offset, offstart, evals = vtable[c](
+              fmt, i, track, evals, output, compiled, depth, offset, offstart,
+              memory, case_sensitive, magic, for_filename, compatible, ccache)
+          continue
+
+      match = next_token.search(fmt, i + soff)
+      if match:
+        output.append(fmt[i-1:match.start()])
+        soff = -1
+        i = match.start()
+      else:
+        output.append(fmt[i-1:])
+        i = len(fmt)
+        break
+  except (IndexError, ValueError, AttributeError, StopIteration) as e:
+    #print(f'Caught {e.__class__.__name__}, ignoring: {e}')
+    pass
+
+  # At this point, we have reached the end of the input.
+  if i < len(fmt) and not compatible:
+      raise TitleformatError(state_errors[c](offset, i))
+
+  if vtable is _compiler_vtable:
+    if output:
+      # We need to flush the output buffer to a lambda once more
+      compiled.append(lambda t, output=''.join(output): (output, 0))
+    ccache[fmt] = (lambda t, compiled=compiled, depth=depth:
+      invoke_jit_eval(compiled, depth, t))
+    return ccache[fmt]
+
+  output = ''.join(output)
+
+  if not depth and for_filename:
+    output = foobar_filename_escape(output)
+
+  result = EvaluatorAtom(output, bool(evals))
+
+  return result
 
 
 def invoke_jit_eval(compiled, depth, track):
