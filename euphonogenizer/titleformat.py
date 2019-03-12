@@ -283,9 +283,6 @@ def __foo_va_conv_n_lazy_int(n):
 def __foo_va_lazy(x):
   return x.eval()
 
-def __foo_is_word_sep(c):
-  return c in ' /\\()[]'
-
 def foo_true(track, memory, va):
   return True
 
@@ -609,27 +606,33 @@ def foo_ascii(track, memory, va_x):
   result = str(x).encode('ascii', '__foo_ascii_replace')
   return EvaluatorAtom(result.decode('utf-8', 'replace'), bool(x))
 
-def foo_caps_impl(va_x, on_nonfirst):
-  x = va_x[0].eval()
-  result = ''
-  new_word = True
-  for c in str(x):
-    if __foo_is_word_sep(c):
-      new_word = True
-      result += c
-    else:
-      if new_word:
-        result += c.upper()
-        new_word = False
-      else:
-        result += on_nonfirst(c)
-  return EvaluatorAtom(result, bool(x))
+
+__caps_sep = r'^|[ /|(,)[\]\\]'
+__caps_word = r'[^ /|(,)[\]\\]'
+__caps_sub_pattern = re.compile(
+    f'({__caps_sep})({__caps_word})({__caps_word}*)')
+__caps2_sub_pattern = re.compile(
+    f'({__caps_sep})({__caps_word})')
+
+del __caps_sep
+del __caps_word
+
+
+def __caps_sub_repl(match):
+  return f'{match.group(1)}{match.group(2).upper()}{match.group(3).lower()}'
+
+def __caps2_sub_repl(match):
+  return f'{match.group(1)}{match.group(2).upper()}'
 
 def foo_caps(track, memory, va_x):
-  return foo_caps_impl(va_x, on_nonfirst=lambda c: c.lower())
+  x = va_x[0].eval()
+  return EvaluatorAtom(
+      __caps_sub_pattern.sub(__caps_sub_repl, str(x)), bool(x))
 
 def foo_caps2(track, memory, va_x):
-  return foo_caps_impl(va_x, on_nonfirst=lambda c: c)
+  x = va_x[0].eval()
+  return EvaluatorAtom(
+      __caps2_sub_pattern.sub(__caps2_sub_repl, str(x)), bool(x))
 
 def foo_char(track, memory, va_x):
   x = __foo_va_conv_n_lazy_int(va_x[0])
