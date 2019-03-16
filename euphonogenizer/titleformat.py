@@ -22,7 +22,7 @@ from .common import dbg
 class EvaluatorAtom(object):
   __slots__ = 'value', 'truth'
 
-  def __init__(self, value, truth):
+  def __init__(self, value, truth=False):
     self.value = value
     self.truth = truth
 
@@ -283,22 +283,22 @@ def __foo_va_conv_n_lazy_int(n):
 def __foo_va_lazy(x):
   return x.eval()
 
-def foo_true(track, memory, va):
+def foo_true(*unused_va, track=None, memory=None):
   return True
 
-def foo_false(track, memory, va):
+def foo_false(*unused_va, track=None, memory=None):
   pass
 
-def foo_zero(track, memory, va):
+def foo_zero(*unused_va, track=None, memory=None):
   return '0'
 
-def foo_one(track, memory, va):
+def foo_one(*unused_va, track=None, memory=None):
   return '1'
 
-def foo_nop(track, memory, va):
+def foo_nop(*va, track=None, memory=None):
   return va[0].eval()
 
-def foo_unknown(track, memory, va):
+def foo_unknown(*unused_va, track=None, memory=None):
   return '[UNKNOWN FUNCTION]'
 
 nnop_known_table = {
@@ -307,7 +307,7 @@ nnop_known_table = {
     '-0' : '0',
 }
 
-def foo_nnop(track, memory, va):
+def foo_nnop(*va, track=None, memory=None):
   val = va[0].eval()
 
   try:
@@ -329,74 +329,75 @@ def foo_nnop(track, memory, va):
 
   return '0'
 
-def foo_bnop(track, memory, va):
+def foo_bnop(*va, track=None, memory=None):
   return __foo_va_conv_bool_lazy(va[0])
 
 def foo_invalid(fn):
-  return lambda *args, x='[INVALID $%s SYNTAX]' % fn.upper(): x
+  error_str = f'[INVALID ${fn.upper()} SYNTAX]'
+  return lambda *args, track=None, memory=None: error_str
 
-def foo_if_arity2(track, memory, va_cond_then):
-  if va_cond_then[0].eval():
-    return va_cond_then[1].eval()
+def foo_if_arity2(*cond_then, track=None, memory=None):
+  if cond_then[0].eval():
+    return cond_then[1].eval()
 
-def foo_if_arity3(track, memory, va_cond_then_else):
-  if va_cond_then_else[0].eval():
-    return va_cond_then_else[1].eval()
-  return va_cond_then_else[2].eval()
+def foo_if_arity3(*cond_then_else, track=None, memory=None):
+  if cond_then_else[0].eval():
+    return cond_then_else[1].eval()
+  return cond_then_else[2].eval()
 
-def foo_if2(track, memory, va_a_else):
-  return va_a_else[0].eval() if va_a_else[0].eval() else va_a_else[1].eval()
+def foo_if2(*a_else, track=None, memory=None):
+  return a_else[0].eval() if a_else[0].eval() else a_else[1].eval()
 
-def foo_if3(track, memory, va_a1_a2_aN_else):
-  for i in range(0, len(va_a1_a2_aN_else) - 1):
-    if va_a1_a2_aN_else[i].eval():
-      return va_a1_a2_aN_else[i].eval()
-  return va_a1_a2_aN_else[-1].eval()
+def foo_if3(*a1_a2_aN_else, track=None, memory=None):
+  for i in range(0, len(a1_a2_aN_else) - 1):
+    if a1_a2_aN_else[i].eval():
+      return a1_a2_aN_else[i].eval()
+  return a1_a2_aN_else[-1].eval()
 
-def foo_ifequal(track, memory, va_n1_n2_then_else):
-  n1 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[0])
-  n2 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[1])
+def foo_ifequal(*n1_n2_then_else, track=None, memory=None):
+  n1 = __foo_va_conv_n_lazy_int(n1_n2_then_else[0])
+  n2 = __foo_va_conv_n_lazy_int(n1_n2_then_else[1])
   if n1 == n2:
-    return va_n1_n2_then_else[2].eval()
-  return va_n1_n2_then_else[3].eval()
+    return n1_n2_then_else[2].eval()
+  return n1_n2_then_else[3].eval()
 
-def foo_ifgreater(track, memory, va_n1_n2_then_else):
-  n1 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[0])
-  n2 = __foo_va_conv_n_lazy_int(va_n1_n2_then_else[1])
+def foo_ifgreater(*n1_n2_then_else, track=None, memory=None):
+  n1 = __foo_va_conv_n_lazy_int(n1_n2_then_else[0])
+  n2 = __foo_va_conv_n_lazy_int(n1_n2_then_else[1])
   if n1 > n2:
-    return va_n1_n2_then_else[2].eval()
-  return va_n1_n2_then_else[3].eval()
+    return n1_n2_then_else[2].eval()
+  return n1_n2_then_else[3].eval()
 
-def foo_iflonger(track, memory, va_s_n_then_else):
-  n = __foo_va_conv_n_lazy_int(va_s_n_then_else[1])
-  if len(va_s_n_then_else[0].eval()) > n:
-    return va_s_n_then_else[2].eval()
-  return va_s_n_then_else[3].eval()
+def foo_iflonger(*s_n_then_else, track=None, memory=None):
+  n = __foo_va_conv_n_lazy_int(s_n_then_else[1])
+  if len(s_n_then_else[0].eval()) > n:
+    return s_n_then_else[2].eval()
+  return s_n_then_else[3].eval()
 
-def foo_select(track, memory, va_n_a1_aN):
-  n = __foo_va_conv_n_lazy_int(va_n_a1_aN[0])
-  if n > 0 and n <= len(va_n_a1_aN) - 1:
-    return va_n_a1_aN[n].eval()
+def foo_select(*n_a1_aN, track=None, memory=None):
+  n = __foo_va_conv_n_lazy_int(n_a1_aN[0])
+  if n > 0 and n <= len(n_a1_aN) - 1:
+    return n_a1_aN[n].eval()
 
-def foo_select2(track, memory, va_n_a1_a2):
-  if __foo_va_conv_n_lazy_int(va_n_a1_a2[0]) == 1:
-    return va_n_a1_a2[1].eval()
+def foo_select2(*n_a1_a2, track=None, memory=None):
+  if __foo_va_conv_n_lazy_int(n_a1_a2[0]) == 1:
+    return n_a1_a2[1].eval()
 
-def foo_add(track, memory, va_aN):
-  value = __foo_va_conv_n_lazy(va_aN[0])
-  for a in va_aN[1:]:
+def foo_add(*aN, track=None, memory=None):
+  value = __foo_va_conv_n_lazy(aN[0])
+  for a in aN[1:]:
     value += __foo_va_conv_n_lazy(a)
   return value
 
-def foo_div(track, memory, va_aN):
-  value = __foo_va_conv_n_lazy(va_aN[0])
-  for a in va_aN[1:]:
+def foo_div(*aN, track=None, memory=None):
+  value = __foo_va_conv_n_lazy(aN[0])
+  for a in aN[1:]:
     value //= __foo_va_conv_n_lazy(a)
   return value
 
-def foo_greater(track, memory, va_a_b):
-  a = __foo_va_conv_n_lazy_int(va_a_b[0])
-  b = __foo_va_conv_n_lazy_int(va_a_b[1])
+def foo_greater(*a_b, track=None, memory=None):
+  a = __foo_va_conv_n_lazy_int(a_b[0])
+  b = __foo_va_conv_n_lazy_int(a_b[1])
   if a > b:
     return True
   return False
@@ -408,11 +409,11 @@ def __foo_max_logic(a, b):
   b |= a
   return b
 
-def foo_max(track, memory, va_a_b):
-  return __foo_max_logic(*map(__foo_va_conv_n_lazy, va_a_b))
+def foo_max(*a_b, track=None, memory=None):
+  return __foo_max_logic(*map(__foo_va_conv_n_lazy, a_b))
 
-def foo_maxN(track, memory, va_aN):
-  return reduce(__foo_max_logic, map(__foo_va_conv_n_lazy, va_aN))
+def foo_maxN(*aN, track=None, memory=None):
+  return reduce(__foo_max_logic, map(__foo_va_conv_n_lazy, aN))
 
 def __foo_min_logic(a, b):
   if a < b:
@@ -421,70 +422,70 @@ def __foo_min_logic(a, b):
   b |= a
   return b
 
-def foo_min(track, memory, va_a_b):
-  return __foo_min_logic(*map(__foo_va_conv_n_lazy, va_a_b))
+def foo_min(*a_b, track=None, memory=None):
+  return __foo_min_logic(*map(__foo_va_conv_n_lazy, a_b))
 
-def foo_minN(track, memory, va_aN):
-  return reduce(__foo_min_logic, map(__foo_va_conv_n_lazy, va_aN))
+def foo_minN(*aN, track=None, memory=None):
+  return reduce(__foo_min_logic, map(__foo_va_conv_n_lazy, aN))
 
-def foo_mod(track, memory, va_a_b):
-  a = __foo_va_conv_n_lazy(va_a_b[0])
-  b = __foo_va_conv_n_lazy(va_a_b[1])
+def foo_mod(*a_b, track=None, memory=None):
+  a = __foo_va_conv_n_lazy(a_b[0])
+  b = __foo_va_conv_n_lazy(a_b[1])
   a %= b
   return a
 
-def foo_modN(track, memory, va_aN):
-  value = __foo_va_conv_n_lazy(va_aN[0])
-  for a in va_aN[1:]:
+def foo_modN(*aN, track=None, memory=None):
+  value = __foo_va_conv_n_lazy(aN[0])
+  for a in aN[1:]:
     value %= __foo_va_conv_n_lazy(a)
   return value
 
-def foo_mul(track, memory, va_aN):
-  value = __foo_va_conv_n_lazy(va_aN[0])
-  for a in va_aN[1:]:
+def foo_mul(*aN, track=None, memory=None):
+  value = __foo_va_conv_n_lazy(aN[0])
+  for a in aN[1:]:
     value *= __foo_va_conv_n_lazy(a)
   return value
 
-def foo_muldiv(track, memory, va_a_b_c):
-  c = __foo_va_conv_n_lazy(va_a_b_c[2])
+def foo_muldiv(*a_b_c, track=None, memory=None):
+  c = __foo_va_conv_n_lazy(a_b_c[2])
   c.truth = True  # Truth behavior confirmed by experimentation.
   if c.value == 0:
     # This is real Foobar behavior for some reason, probably a bug.
     c.value = -1
     return c
-  a = __foo_va_conv_n_lazy(va_a_b_c[0])
-  a *= __foo_va_conv_n_lazy(va_a_b_c[1])
+  a = __foo_va_conv_n_lazy(a_b_c[0])
+  a *= __foo_va_conv_n_lazy(a_b_c[1])
   a //= c
   return a
 
-def foo_rand(track, memory, va):
+def foo_rand(*unused_va, track=None, memory=None):
   random.seed()
   return random.randint(0, sys.maxint)
 
-def foo_sub(track, memory, va_aN):
-  value = __foo_va_conv_n_lazy(va_aN[0])
-  for a in va_aN[1:]:
+def foo_sub(*aN, track=None, memory=None):
+  value = __foo_va_conv_n_lazy(aN[0])
+  for a in aN[1:]:
     value -= __foo_va_conv_n_lazy(a)
   return value
 
-def foo_and(track, memory, va_N):
-  for each in va_N:
+def foo_and(*expr, track=None, memory=None):
+  for each in expr:
     if not __foo_va_conv_bool_lazy(each):
       return False
   return True
 
-def foo_or(track, memory, va_N):
-  for each in va_N:
+def foo_or(*expr, track=None, memory=None):
+  for each in expr:
     if __foo_va_conv_bool_lazy(each):
       return True
   return False
 
-def foo_not(track, memory, va_x):
-  return not __foo_va_conv_bool_lazy(va_x[0])
+def foo_not(*expr, track=None, memory=None):
+  return not __foo_va_conv_bool_lazy(expr[0])
 
-def foo_xor(track, memory, va_N):
+def foo_xor(*expr, track=None, memory=None):
   r = False
-  for each in va_N:
+  for each in expr:
     r ^= __foo_va_conv_bool_lazy(each)
   return r
 
@@ -504,14 +505,14 @@ def foo_abbr(value):
           abbr += each[0]
   return abbr
 
-def foo_abbr1(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_abbr1(*x, track=None, memory=None):
+  x = x[0].eval()
   x.value = foo_abbr(str(x))
   return x
 
-def foo_abbr2(track, memory, va_x_len):
-  x = va_x_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(va_x_len[1])
+def foo_abbr2(*x_len, track=None, memory=None):
+  x = x_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(x_len[1])
   sx = str(x)
   if len(sx) > length:
     x.value = foo_abbr(sx)
@@ -592,8 +593,8 @@ codecs.register_error('__foo_ansi_replace', __foo_ansi_replace)
 codecs.register_error('__foo_ascii_replace', __foo_ascii_replace)
 
 
-def foo_ansi(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_ansi(*x, track=None, memory=None):
+  x = x[0].eval()
   # Doing the conversion this way will probably not produce the same output with
   # wide characters as Foobar, which produces two '??' instead of one. I don't
   # have a multibyte build of Python lying around right now, so I can't
@@ -601,8 +602,8 @@ def foo_ansi(track, memory, va_x):
   result = str(x).encode('windows-1252', '__foo_ansi_replace')
   return EvaluatorAtom(str(result, 'windows-1252', 'replace'), bool(x))
 
-def foo_ascii(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_ascii(*x, track=None, memory=None):
+  x = x[0].eval()
   result = str(x).encode('ascii', '__foo_ascii_replace')
   return EvaluatorAtom(result.decode('utf-8', 'replace'), bool(x))
 
@@ -624,18 +625,18 @@ def __caps_sub_repl(match):
 def __caps2_sub_repl(match):
   return f'{match.group(1)}{match.group(2).upper()}'
 
-def foo_caps(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_caps(*x, track=None, memory=None):
+  x = x[0].eval()
   return EvaluatorAtom(
       __caps_sub_pattern.sub(__caps_sub_repl, str(x)), bool(x))
 
-def foo_caps2(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_caps2(*x, track=None, memory=None):
+  x = x[0].eval()
   return EvaluatorAtom(
       __caps2_sub_pattern.sub(__caps2_sub_repl, str(x)), bool(x))
 
-def foo_char(track, memory, va_x):
-  x = __foo_va_conv_n_lazy_int(va_x[0])
+def foo_char(*x, track=None, memory=None):
+  x = __foo_va_conv_n_lazy_int(x[0])
   if x <= 0:
     return ''
   if x > 1048575:
@@ -650,18 +651,18 @@ def foo_char(track, memory, va_x):
   except OverflowError:
     return ''
 
-def foo_crc32(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_crc32(*x, track=None, memory=None):
+  x = x[0].eval()
   crc = binascii.crc32(bytes(x))
   return EvaluatorAtom(crc, bool(x))
 
-def foo_crlf(track, memory, va):
+def foo_crlf(*unused_va, track=None, memory=None):
   return '\r\n'
 
 # foo_cut is the same as foo_left; see definition for it below
 
-def foo_directory_1(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_directory_1(*x, track=None, memory=None):
+  x = x[0].eval()
   # RFC 8089 allows pipe characters to be used instead of the colons in the
   # drive construct, and Foobar obeys this. For more information, see:
   # https://tools.ietf.org/html/rfc8089#appendix-E.2.2
@@ -670,9 +671,9 @@ def foo_directory_1(track, memory, va_x):
     return EvaluatorAtom('', bool(x))
   return EvaluatorAtom(parts[-2], bool(x))
 
-def foo_directory_2(track, memory, va_x_n):
-  x = va_x_n[0].eval()
-  n = __foo_va_conv_n_lazy_int(va_x_n[1])
+def foo_directory_2(*x_n, track=None, memory=None):
+  x = x_n[0].eval()
+  n = __foo_va_conv_n_lazy_int(x_n[1])
   if n <= 0:
     return EvaluatorAtom('', bool(x))
   parts = re.split('[\\\\/:|]', str(x))
@@ -681,15 +682,15 @@ def foo_directory_2(track, memory, va_x_n):
     return EvaluatorAtom('', bool(x))
   return EvaluatorAtom(parts[parts_len - n - 1], bool(x))
 
-def foo_directory_path(track, memory, va_x):
-  x = va_x[0].eval()
+def foo_directory_path(*x, track=None, memory=None):
+  x = x[0].eval()
   parts = re.split('[\\\\/:|]', str(x)[::-1], 1)
   if len(parts) < 2:
     return EvaluatorAtom('', bool(x))
   return EvaluatorAtom(parts[1][::-1], bool(x))
 
-def foo_ext(track, memory, va_x):
-  x = va_x[0]
+def foo_ext(*x, track=None, memory=None):
+  x = x[0]
 
   try:
     x = x.eval()
@@ -703,8 +704,8 @@ def foo_ext(track, memory, va_x):
 
   return EvaluatorAtom(ext.partition('?')[0], bool(x))
 
-def foo_filename(track, memory, va_x):
-  x = va_x[0]
+def foo_filename(*x, track=None, memory=None):
+  x = x[0]
 
   try:
     x = x.eval()
@@ -716,13 +717,13 @@ def foo_filename(track, memory, va_x):
   return EvaluatorAtom(
       parts[-1].partition('?')[0].rsplit('.', 1)[0], bool(x))
 
-def foo_fix_eol_1(track, memory, va_x):
-  return foo_fix_eol(track, memory, va_x[0], ' (...)')
+def foo_fix_eol_1(*x, track=None, memory=None):
+  return foo_fix_eol(x[0], ' (...)')
 
-def foo_fix_eol_2(track, memory, va_x_indicator):
-  return foo_fix_eol(track, memory, *va_x_indicator)
+def foo_fix_eol_2(*x_indicator, track=None, memory=None):
+  return foo_fix_eol(*x_indicator)
 
-def foo_fix_eol(track, memory, x, indicator):
+def foo_fix_eol(x, indicator):
   try:
     x = x.eval()
   except AttributeError:
@@ -740,18 +741,18 @@ def foo_fix_eol(track, memory, x, indicator):
 
   return x
 
-def foo_hex_1(track, memory, va_n):
+def foo_hex_1(*n, track=None, memory=None):
   # While technically in the documentation, $hex(n) doesn't actually do anything
   # as of foobar2000 1.4.2. This is probably a bug that no one has noticed. This
   # documentation-based implementation is provided for non-compliant uses.
-  return foo_hex(track, memory, va_n[0])
+  return foo_hex(n[0], 0)
 
-def foo_hex_2(track, memory, va_n_len):
-  return foo_hex(track, memory, *va_n_len)
+def foo_hex_2(*n_len, track=None, memory=None):
+  return foo_hex(*n_len)
 
-def foo_hex(track, memory, n, length=0):
-  n = __foo_va_conv_n_lazy(n)
-  length = __foo_va_conv_n_lazy_int(length)
+def foo_hex(*n_len, track=None, memory=None):
+  n = __foo_va_conv_n_lazy(n_len[0])
+  length = __foo_va_conv_n_lazy_int(n_len[1])
 
   n.value = hex(
       max(-0x8000000000000000, min(__foo_int(n), 0x7FFFFFFFFFFFFFFF)
@@ -759,10 +760,10 @@ def foo_hex(track, memory, n, length=0):
 
   return n
 
-def foo_insert(track, memory, va_a_b_n):
-  a = va_a_b_n[0].eval()
-  b = str(va_a_b_n[1].eval())
-  n = __foo_va_conv_n_lazy_int(va_a_b_n[2])
+def foo_insert(*a_b_n, track=None, memory=None):
+  a = a_b_n[0].eval()
+  b = str(a_b_n[1].eval())
+  n = __foo_va_conv_n_lazy_int(a_b_n[2])
 
   if n < 0:
     a.value += b
@@ -770,9 +771,9 @@ def foo_insert(track, memory, va_a_b_n):
     a.value = a.value[0:n] + b + a.value[n:]
   return a
 
-def foo_left(track, memory, va_a_len):
-  a = va_a_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(va_a_len[1])
+def foo_left(*a_len, track=None, memory=None):
+  a = a_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(a_len[1])
 
   if length >= 0:
     a.value = a.value[0:length]
@@ -781,12 +782,12 @@ def foo_left(track, memory, va_a_len):
 
 foo_cut = foo_left  # These are the same, so just alias for completeness
 
-def foo_len(track, memory, va_a):
-  a = va_a[0].eval()
+def foo_len(*a, track=None, memory=None):
+  a = a[0].eval()
   return EvaluatorAtom(len(str(a)), bool(a))
 
-def foo_len2(track, memory, va_a):
-  a = va_a[0].eval()
+def foo_len2(*a, track=None, memory=None):
+  a = a[0].eval()
   length = 0
   str_a = str(a)
   for c in str_a:
@@ -799,19 +800,19 @@ def foo_len2(track, memory, va_a):
       length += 2
   return EvaluatorAtom(length, bool(a))
 
-def foo_longer(track, memory, va_a_b):
-  len_a = len(str(va_a_b[0].eval()))
-  len_b = len(str(va_a_b[1].eval()))
+def foo_longer(*a_b, track=None, memory=None):
+  len_a = len(str(a_b[0].eval()))
+  len_b = len(str(a_b[1].eval()))
   return len_a > len_b
 
-def foo_lower(track, memory, va_a):
-  a = va_a[0].eval()
+def foo_lower(*a, track=None, memory=None):
+  a = a[0].eval()
   return EvaluatorAtom(str(a).lower(), bool(a))
 
-def foo_longest(track, memory, va_a1_aN):
+def foo_longest(*a1_aN, track=None, memory=None):
   longest = None
   longest_len = -1
-  for each in va_a1_aN:
+  for each in a1_aN:
     current = each.eval()
     current_len = len(str(current))
     if current_len > longest_len:
@@ -819,9 +820,9 @@ def foo_longest(track, memory, va_a1_aN):
       longest_len = current_len
   return longest
 
-def foo_num(track, memory, va_n_len):
-  n = va_n_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(va_n_len[1])
+def foo_num(*n_len, track=None, memory=None):
+  n = n_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(n_len[1])
   value = None
   if (length > 0):
     value = str(__foo_va_conv_n(n)).zfill(length)
@@ -829,10 +830,10 @@ def foo_num(track, memory, va_n_len):
     value = str(__foo_int(__foo_va_conv_n(n)))
   return EvaluatorAtom(value, bool(n))
 
-def foo_pad_universal(va_x_len_char, right):
-  x = va_x_len_char[0].eval()
-  length = __foo_va_conv_n_lazy_int(va_x_len_char[1])
-  char = va_x_len_char[2]
+def foo_pad_universal(x, length, char, right):
+  x = x_len_char[0].eval()
+  length = __foo_va_conv_n_lazy_int(x_len_char[1])
+  char = x_len_char[2]
 
   try:
     char = str(char.eval())[0]
@@ -854,32 +855,30 @@ def foo_pad_universal(va_x_len_char, right):
     return EvaluatorAtom(padded, bool(x))
   return x
 
-def foo_pad_arity2(track, memory, va_x_len):
-  return foo_pad_arity3(track, memory, va_x_len + [' '])
+def foo_pad_arity2(*x_len, track=None, memory=None):
+  return foo_pad_universal(*x_len, ' ', False)
 
-def foo_pad_arity3(track, memory, va_x_len_char):
-  return foo_pad_universal(va_x_len_char, right=False)
+def foo_pad_arity3(*x_len_char, track=None, memory=None):
+  return foo_pad_universal(*x_len_char, False)
 
-def foo_pad_right_arity2(track, memory, va_x_len):
-  return foo_pad_right_arity3(track, memory, va_x_len + [' '])
+def foo_pad_right_arity2(*x_len, track=None, memory=None):
+  return foo_pad_universal(*x_len, ' ', True)
 
-def foo_pad_right_arity3(track, memory, va_x_len_char):
-  return foo_pad_universal(va_x_len_char, right=True)
+def foo_pad_right_arity3(*x_len_char, track=None, memory=None):
+  return foo_pad_universal(*x_len_char, True)
 
-def foo_padcut(track, memory, va_x_len):
-  cut = foo_cut(track, memory, va_x_len)
-  return foo_pad_arity2(track, memory, [cut, va_x_len[1]])
+def foo_padcut(*x_len, track=None, memory=None):
+  return foo_pad_arity2(foo_cut(*x_len), x_len[1])
 
-def foo_padcut_right(track, memory, va_x_len):
-  cut = foo_cut(track, memory, va_x_len)
-  return foo_pad_right_arity2(track, memory, [cut, va_x_len[1]])
+def foo_padcut_right(*x_len, track=None, memory=None):
+  return foo_pad_right_arity2(foo_cut(*x_len), x_len[1])
 
-def _foo_progress_for(va_pos_range_len_a_b, proc):
-  pos = va_pos_range_len_a_b[0].eval()
-  range_value = va_pos_range_len_a_b[1].eval()
-  length = __foo_va_conv_n_lazy_int(va_pos_range_len_a_b[2])
-  a = str(va_pos_range_len_a_b[3].eval())
-  b = str(va_pos_range_len_a_b[4].eval())
+def _foo_progress_for(pos_range_len_a_b, proc):
+  pos = pos_range_len_a_b[0].eval()
+  range_value = pos_range_len_a_b[1].eval()
+  length = __foo_va_conv_n_lazy_int(pos_range_len_a_b[2])
+  a = str(pos_range_len_a_b[3].eval())
+  b = str(pos_range_len_a_b[4].eval())
   pos_int = __foo_int(__foo_va_conv_n(pos))
   range_int = __foo_int(__foo_va_conv_n(range_value))
 
@@ -893,7 +892,7 @@ def _foo_progress_for(va_pos_range_len_a_b, proc):
 
   return EvaluatorAtom(
       proc(pos_int, range_int, length, a, b),
-      foo_and(None, None, [pos, range_value]))
+      foo_and(pos, range_value))
 
 def _do_foo_progress(
     pos_int: int, range_int: int, length: int, a: str, b: str) -> str:
@@ -931,54 +930,54 @@ def _do_foo_progress2(
 
     return a * left_count + b * (length - left_count)
 
-def foo_progress(track, memory, va_pos_range_len_a_b):
-  return _foo_progress_for(va_pos_range_len_a_b, _do_foo_progress)
+def foo_progress(*pos_range_len_a_b, track=None, memory=None):
+  return _foo_progress_for(pos_range_len_a_b, _do_foo_progress)
 
-def foo_progress2(track, memory, va_pos_range_len_a_b):
-  return _foo_progress_for(va_pos_range_len_a_b, _do_foo_progress2)
+def foo_progress2(*pos_range_len_a_b, track=None, memory=None):
+  return _foo_progress_for(pos_range_len_a_b, _do_foo_progress2)
 
-def foo_repeat(track, memory, va_a_n):
-  a = va_a_n[0].eval()
-  n = __foo_va_conv_n_lazy_int(va_a_n[1])
+def foo_repeat(*a_n, track=None, memory=None):
+  a = a_n[0].eval()
+  n = __foo_va_conv_n_lazy_int(a_n[1])
   return EvaluatorAtom(str(a) * n, bool(a))
 
-def foo_replace_explode_recursive(a, va_a_bN_cN, i):
-  if i + 1 < len(va_a_bN_cN):
-    b = str(va_a_bN_cN[i].eval())
+def foo_replace_explode_recursive(a, a_bN_cN, i):
+  if i + 1 < len(a_bN_cN):
+    b = str(a_bN_cN[i].eval())
     splits = a.split(b)
     current = []
     for each in splits:
-      sub_splits = foo_replace_explode_recursive(each, va_a_bN_cN, i + 2)
+      sub_splits = foo_replace_explode_recursive(each, a_bN_cN, i + 2)
       if sub_splits is not None:
         current.append(sub_splits)
     if not current:
       current = splits
     return current
 
-def foo_replace_join_recursive(splits, va_a_bN_cN, i):
-  if i < len(va_a_bN_cN):
+def foo_replace_join_recursive(splits, a_bN_cN, i):
+  if i < len(a_bN_cN):
     current = []
     for each in splits:
-      sub_joined = foo_replace_join_recursive(each, va_a_bN_cN, i + 2)
+      sub_joined = foo_replace_join_recursive(each, a_bN_cN, i + 2)
       if sub_joined is not None:
         current.append(sub_joined)
-    c = str(va_a_bN_cN[i].eval())
+    c = str(a_bN_cN[i].eval())
     if not current:
       current = splits
     joined = c.join(current)
     return joined
 
-def foo_replace(track, memory, va_a_bN_cN):
-  a = va_a_bN_cN[0].eval()
-  splits = foo_replace_explode_recursive(str(a), va_a_bN_cN, 1)
-  result = foo_replace_join_recursive(splits, va_a_bN_cN, 2)
+def foo_replace(*a_bN_cN, track=None, memory=None):
+  a = a_bN_cN[0].eval()
+  splits = foo_replace_explode_recursive(str(a), a_bN_cN, 1)
+  result = foo_replace_join_recursive(splits, a_bN_cN, 2)
   # Truthfully, I have no idea if this is actually right, but it's probably good
   # enough for what it does. The sample cases check out, at least.
   return EvaluatorAtom(result, bool(a))
 
-def foo_right(track, memory, va_a_len):
-  a = va_a_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(va_a_len[1])
+def foo_right(*a_len, track=None, memory=None):
+  a = a_len[0].eval()
+  length = __foo_va_conv_n_lazy_int(a_len[1])
   a_str = str(a)
   a_len = len(a_str)
   if a_len == 0 or length >= a_len:
@@ -1003,8 +1002,8 @@ __roman_numerals = (
     ('I',  1),
 )
 
-def foo_roman(track, memory, va_n):
-  n = va_n[0].eval()
+def foo_roman(*n, track=None, memory=None):
+  n = n[0].eval()
   n_int = __foo_int(__foo_va_conv_n(n))
   result = ''
   if n_int > 0 and n_int <= 100000:
@@ -1014,15 +1013,15 @@ def foo_roman(track, memory, va_n):
         n_int -= value
   return EvaluatorAtom(result, bool(n))
 
-def foo_rot13(track, memory, va_a):
-  a = va_a[0].eval()
+def foo_rot13(*a, track=None, memory=None):
+  a = a[0].eval()
   rot = codecs.encode(str(a), 'rot_13')
   return EvaluatorAtom(rot, bool(a))
 
-def foo_shortest(track, memory, va_aN):
+def foo_shortest(*aN, track=None, memory=None):
   shortest = None
   shortest_len = -1
-  for each in va_aN:
+  for each in aN:
     current = each.eval()
     current_len = len(str(current))
     if shortest_len == -1 or current_len < shortest_len:
@@ -1030,9 +1029,9 @@ def foo_shortest(track, memory, va_aN):
       shortest_len = current_len
   return shortest
 
-def foo_strchr(track, memory, va_s_c):
-  s = str(va_s_c[0].eval())
-  c = str(va_s_c[1].eval())
+def foo_strchr(*s_c, track=None, memory=None):
+  s = str(s_c[0].eval())
+  c = str(s_c[1].eval())
   if c:
     c = c[0]
     for i, char in enumerate(s):
@@ -1040,9 +1039,9 @@ def foo_strchr(track, memory, va_s_c):
         return EvaluatorAtom(i + 1, True)
   return EvaluatorAtom(0, False)
 
-def foo_strrchr(track, memory, va_s_c):
-  s = str(va_s_c[0].eval())
-  c = str(va_s_c[1].eval())
+def foo_strrchr(*s_c, track=None, memory=None):
+  s = str(s_c[0].eval())
+  c = str(s_c[1].eval())
   if c:
     c = c[0]
     for i, char in itertools.izip(reversed(xrange(len(s))), reversed(s)):
@@ -1050,32 +1049,32 @@ def foo_strrchr(track, memory, va_s_c):
         return EvaluatorAtom(i + 1, True)
   return EvaluatorAtom(0, False)
 
-def foo_strstr(track, memory, va_s1_s2):
-  s1 = str(va_s1_s2[0].eval())
-  s2 = str(va_s1_s2[1].eval())
+def foo_strstr(*s1_s2, track=None, memory=None):
+  s1 = str(s1_s2[0].eval())
+  s2 = str(s1_s2[1].eval())
   found_index = 0
   if s1 and s2:
     found_index = s1.find(s2) + 1
   return EvaluatorAtom(found_index, bool(found_index))
 
-def foo_strcmp(track, memory, va_s1_s2):
-  s1 = va_s1_s2[0].eval()
-  s2 = va_s1_s2[1].eval()
+def foo_strcmp(*s1_s2, track=None, memory=None):
+  s1 = s1_s2[0].eval()
+  s2 = s1_s2[1].eval()
   if str(s1) == str(s2):
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
-def foo_stricmp(track, memory, va_s1_s2):
-  s1 = va_s1_s2[0].eval()
-  s2 = va_s1_s2[1].eval()
+def foo_stricmp(*s1_s2, track=None, memory=None):
+  s1 = s1_s2[0].eval()
+  s2 = s1_s2[1].eval()
   if str(s1).lower() == str(s2).lower():
     return EvaluatorAtom(1, True)
   return EvaluatorAtom('', False)
 
-def foo_substr(track, memory, va_s_m_n):
-  s = va_s_m_n[0].eval()
-  m = __foo_va_conv_n_lazy_int(va_s_m_n[1]) - 1
-  n = __foo_va_conv_n_lazy_int(va_s_m_n[2])
+def foo_substr(*s_m_n, track=None, memory=None):
+  s = s_m_n[0].eval()
+  m = __foo_va_conv_n_lazy_int(s_m_n[1]) - 1
+  n = __foo_va_conv_n_lazy_int(s_m_n[2])
   if n < m:
     return EvaluatorAtom('', bool(s))
   if m < 0:
@@ -1093,13 +1092,13 @@ def foo_substr(track, memory, va_s_m_n):
     result = s_str[m:n]
   return EvaluatorAtom(result, bool(s))
 
-def foo_strip_swap_prefix(va_x_prefixN, should_swap):
-  x = va_x_prefixN[0].eval()
+def _foo_strip_swap_prefix(x_prefixN, should_swap):
+  x = x_prefixN[0].eval()
   x_str = str(x)
   x_str_lower = x_str.lower()
 
-  for i in range(1, len(va_x_prefixN)):
-    prefix = va_x_prefixN[i]
+  for i in range(1, len(x_prefixN)):
+    prefix = x_prefixN[i]
 
     try:
       prefix = str(prefix.eval())
@@ -1118,41 +1117,41 @@ def foo_strip_swap_prefix(va_x_prefixN, should_swap):
 
   return x
 
-def foo_stripprefix_arity1(track, memory, va_x):
-  return foo_stripprefix_arityN(track, memory, va_x + ['A', 'The'])
+def foo_stripprefix_arity1(*x, track=None, memory=None):
+  return _foo_strip_swap_prefix((x[0], 'A', 'The'), False)
 
-def foo_stripprefix_arityN(track, memory, va_x_prefixN):
-  return foo_strip_swap_prefix(va_x_prefixN, False)
+def foo_stripprefix_arityN(*x_prefixN, track=None, memory=None):
+  return _foo_strip_swap_prefix(x_prefixN, False)
 
-def foo_swapprefix_arity1(track, memory, va_x):
-  return foo_swapprefix_arityN(track, memory, va_x + ['A', 'The'])
+def foo_swapprefix_arity1(*x, track=None, memory=None):
+  return _foo_strip_swap_prefix((x[0], 'A', 'The'), True)
 
-def foo_swapprefix_arityN(track, memory, va_x_prefixN):
-  return foo_strip_swap_prefix(va_x_prefixN, True)
+def foo_swapprefix_arityN(*x_prefixN, track=None, memory=None):
+  return _foo_strip_swap_prefix(x_prefixN, True)
 
-def foo_trim(track, memory, va_s):
-  s = va_s[0].eval()
+def foo_trim(*s, track=None, memory=None):
+  s = s[0].eval()
   return EvaluatorAtom(str(s).strip(), bool(s))
 
-def foo_tab_arity0(track, memory, va):
+def foo_tab_arity0(*unused_va, track=None, memory=None):
   return '\t'
 
-def foo_tab_arity1(track, memory, va_n):
-  n = __foo_va_conv_n_lazy_int(va_n[0])
+def foo_tab_arity1(*n, track=None, memory=None):
+  n = __foo_va_conv_n_lazy_int(n[0])
   if n < 0 or n > 16:
     n = 16
   return '\t' * n
 
-def foo_upper(track, memory, va_s):
-  s = va_s[0].eval()
+def foo_upper(*s, track=None, memory=None):
+  s = s[0].eval()
   return EvaluatorAtom(str(s).upper(), bool(s))
 
-def foo_meta_arity1(track, memory, va_name):
-  return foo_meta_sep_arity2(track, memory, va_name + [', '])
+def foo_meta_arity1(*name, track=None, memory=None):
+  return foo_meta_sep_arity2(name, ', ', track=track)
 
-def foo_meta_arity2(track, memory, va_name_n):
-  name = str(va_name_n[0].eval())
-  n = __foo_va_conv_n_lazy_int(va_name_n[1])
+def foo_meta_arity2(*name_n, track=None, memory=None):
+  name = str(name_n[0].eval())
+  n = __foo_va_conv_n_lazy_int(name_n[1])
   if n < 0:
     return False
   value = track.get(name)
@@ -1168,10 +1167,10 @@ def foo_meta_arity2(track, memory, va_name_n):
     return False
   return EvaluatorAtom(value, True)
 
-def foo_meta_sep_arity2(track, memory, va_name_sep):
-  name = str(va_name_sep[0].eval())
+def foo_meta_sep_arity2(*name_sep, track=None, memory=None):
+  name = str(name_sep[0].eval())
 
-  sep = va_name_sep[1]
+  sep = name_sep[1]
   try:
     sep = str(sep.eval())
   except AttributeError:
@@ -1186,10 +1185,10 @@ def foo_meta_sep_arity2(track, memory, va_name_sep):
     value = sep.join(value)
   return EvaluatorAtom(value, True)
 
-def foo_meta_sep_arity3(track, memory, va_name_sep_lastsep):
-  name = str(va_name_sep_lastsep[0].eval())
-  sep = str(va_name_sep_lastsep[1].eval())
-  lastsep = str(va_name_sep_lastsep[2].eval())
+def foo_meta_sep_arity3(*name_sep_lastsep, track=None, memory=None):
+  name = str(name_sep_lastsep[0].eval())
+  sep = str(name_sep_lastsep[1].eval())
+  lastsep = str(name_sep_lastsep[2].eval())
   value = track.get(name)
   if not value:
     value = track.get(name.upper())
@@ -1202,8 +1201,8 @@ def foo_meta_sep_arity3(track, memory, va_name_sep_lastsep):
       value = value[0]
   return EvaluatorAtom(value, True)
 
-def foo_meta_test(track, memory, va_nameN):
-  for each in va_nameN:
+def foo_meta_test(*nameN, track=None, memory=None):
+  for each in nameN:
     name = str(each.eval())
     value = track.get(name)
     if not value:
@@ -1212,8 +1211,8 @@ def foo_meta_test(track, memory, va_nameN):
         return False
   return EvaluatorAtom(1, True)
 
-def foo_meta_num(track, memory, va_name):
-  name = str(va_name[0].eval())
+def foo_meta_num(*name, track=None, memory=None):
+  name = str(name[0].eval())
   value = track.get(name)
   if not value:
     value = track.get(name.upper())
@@ -1223,8 +1222,8 @@ def foo_meta_num(track, memory, va_name):
     return EvaluatorAtom(len(value), True)
   return EvaluatorAtom(1, True)
 
-def foo_get(track, memory, va_name):
-  name = va_name[0].eval()
+def foo_get(*name, track=None, memory=None):
+  name = name[0].eval()
   name_str = str(name)
   if name_str == '':
     return False
@@ -1233,15 +1232,15 @@ def foo_get(track, memory, va_name):
     return EvaluatorAtom(value, True)
   return False
 
-def foo_put(track, memory, va_name_value):
-  name = str(va_name_value[0].eval())
-  value = va_name_value[1].eval()
+def foo_put(*name_value, track=None, memory=None):
+  name = str(name_value[0].eval())
+  value = name_value[1].eval()
   if name != '':
     memory[name] = str(value)
   return value
 
-def foo_puts(track, memory, va_name_value):
-  value = foo_put(track, memory, va_name_value)
+def foo_puts(*name_value, track=None, memory=None):
+  value = foo_put(*name_value, track=track, memory=memory)
   return bool(value)
 
 
@@ -1390,7 +1389,7 @@ def vlookup(function, arity):
 def vinvoke(track, function, argv, memory={}):
   arity = len(argv)
   funcref = vlookup(function, arity)
-  return vmarshal(funcref(track, memory, argv))
+  return vmarshal(funcref(*argv, track=track, memory=memory))
 
 def vcallmarshal(atom):
   if atom is None:
@@ -1999,7 +1998,8 @@ def compile_fn_call(current_fn, current_argv, depth, offset):
   fn = vlookup(current_fn, len(current_argv))
   return (lambda t, fn=fn, argv=current_argv:
     vcallmarshal(vmarshal(
-      fn(t, {}, [x.curry(t) if hasattr(x, 'curry') else x for x in argv]))))
+      fn(*[x.curry(t) if hasattr(x, 'curry') else x for x in argv],
+        track=t, memory={}))))
 
 
 def invoke_function(
