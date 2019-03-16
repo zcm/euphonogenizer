@@ -874,7 +874,7 @@ def foo_padcut_right(track, memory, va_x_len):
   cut = foo_cut(track, memory, va_x_len)
   return foo_pad_right_arity2(track, memory, [cut, va_x_len[1]])
 
-def foo_progress_universal(va_pos_range_len_a_b, is2):
+def _foo_progress_for(va_pos_range_len_a_b, proc):
   pos = va_pos_range_len_a_b[0].eval()
   range_value = va_pos_range_len_a_b[1].eval()
   length = __foo_va_conv_n_lazy_int(va_pos_range_len_a_b[2])
@@ -883,52 +883,59 @@ def foo_progress_universal(va_pos_range_len_a_b, is2):
   pos_int = __foo_int(__foo_va_conv_n(pos))
   range_int = __foo_int(__foo_va_conv_n(range_value))
 
+  if range_int < 0:
+    range_int = 0
+
   if pos_int > range_int:
-    pos_int = range_int
+    pos_int = max(range_int, 1)
   elif pos_int < 0:
     pos_int = 0
 
-  progress = None
+  return EvaluatorAtom(
+      proc(pos_int, range_int, length, a, b),
+      foo_and(None, None, [pos, range_value]))
 
-  if not is2:
-    cursor_pos = 0
-
-    if range_int == 0:
-      if __foo_va_conv_n_lazy_int(pos) > 0:
-        progress = a + b * (length - 1)
-      else:
-        progress = b * (length - 1) + a
+def _do_foo_progress(
+    pos_int: int, range_int: int, length: int, a: str, b: str) -> str:
+  if range_int == 0:
+    if pos_int > 0:
+      return b * (length - 1) + a
     else:
-      cursor_pos = (pos_int * length + range_int // 2) // range_int
-
-      # This appears to be a foobar2000 bug. The cursor position is off by one.
-      # Remove this line if the bug is ever fixed.
-      cursor_pos += 1
-
-      if cursor_pos <= 0:
-        cursor_pos = 1
-      elif cursor_pos >= length:
-        cursor_pos = length
-
-      progress = a * (cursor_pos - 1) + b + a * (length - cursor_pos)
+      return a + b * (length - 1)
   else:
-    if range_int == 0:
-      if __foo_va_conv_n_lazy_int(pos) > 0:
-        progress = a * length
-      else:
-        progress = b * length
+    cursor_pos = (pos_int * length + range_int // 2) // range_int
+
+    # This appears to be a foobar2000 bug. The cursor position is off by one.
+    # Remove this line if the bug is ever fixed.
+    cursor_pos += 1
+
+    if cursor_pos <= 0:
+      cursor_pos = 1
+    elif cursor_pos >= length:
+      cursor_pos = length
+
+    return b * (cursor_pos - 1) + a + b * (length - cursor_pos)
+
+def _do_foo_progress2(
+    pos_int: int, range_int: int, length: int, a: str, b: str) -> str:
+  if length < 1:
+    length = 1
+
+  if range_int == 0:
+    if pos_int > 0:
+      return a * length
     else:
-      left_count = pos_int * length // range_int
+      return b * length
+  else:
+    left_count = int(round(pos_int * length / range_int))
 
-      progress = a * left_count + b * (length - left_count)
-
-  return EvaluatorAtom(progress, foo_and(None, [pos, range_value]))
+    return a * left_count + b * (length - left_count)
 
 def foo_progress(track, memory, va_pos_range_len_a_b):
-  return foo_progress_universal(va_pos_range_len_a_b, False)
+  return _foo_progress_for(va_pos_range_len_a_b, _do_foo_progress)
 
 def foo_progress2(track, memory, va_pos_range_len_a_b):
-  return foo_progress_universal(va_pos_range_len_a_b, True)
+  return _foo_progress_for(va_pos_range_len_a_b, _do_foo_progress2)
 
 def foo_repeat(track, memory, va_a_n):
   a = va_a_n[0].eval()
@@ -1297,8 +1304,8 @@ foo_function_vtable = {
     'pad_right': {2: foo_pad_right_arity2, 3: foo_pad_right_arity3},
     'padcut': {2: foo_padcut},
     'padcut_right': {2: foo_padcut_right},
-    'progress': {5: foo_progress},
-    'progress2': {5: foo_progress2},
+    'progress': {5: foo_progress, 'n': foo_false},
+    'progress2': {5: foo_progress2, 'n': foo_false},
     'repeat': {2: foo_repeat},
     'replace': {
         0: foo_false,
