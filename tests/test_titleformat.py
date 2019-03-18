@@ -3,7 +3,7 @@
 # vim:ts=2:sw=2:et:ai
 
 from euphonogenizer import titleformat
-from euphonogenizer.common import unistr
+from euphonogenizer.titleformat import EvaluatorAtom
 
 from functools import reduce
 from itertools import product
@@ -1153,9 +1153,9 @@ def generate_tests():
       fmt = '$%s(%s)' % (fn, testarg)
 
       if group == 'arithmetic':
-        expected = unistr(resolve_int_var(testarg, cs_01))
+        expected = str(resolve_int_var(testarg, cs_01))
         try:
-          expected = unistr(int(expected))
+          expected = str(int(expected))
         except ValueError:
           expected = '0'
       elif group == 'boolean':
@@ -1177,7 +1177,7 @@ def generate_tests():
       if testarg[0] == '%' and group == 'arithmetic':
         # Attempts to negate a variable resolution actually work somehow!
         fmt = '$%s(-%s)' % (fn, testarg)
-        expected = unistr(int(expected) * -1)
+        expected = str(int(expected) * -1)
         generated_cases.append(pytest.param(
             fmt, expected, testarg_stripped in cs_01, cs_01,
             id="%s:arity1<%s = '%s'>" % (group, fmt, expected)))
@@ -1202,13 +1202,13 @@ def generate_tests():
       # First check the literal parser and how it handles numbers
       if fn != 'not': # Skip this check for not
         if type(t1) is int or type(t1) is not int and '%' not in t1:
-          s1 = unistr(t1)
+          s1 = str(t1)
           literal_s1 = "'" + s1 + "'"
           a1 = t1 if type(t1) is int else resolve_int_var(t1, cs_01)
           a2 = t2 if type(t2) is int else resolve_int_var(t2, cs_01)
           fmt = '$%s(%s,%s)' % (fn, literal_s1, t2)
-          expected = '' if group == 'boolean' else unistr(answer(a1, a2))
-          expected_truth = False if fn == 'and' else '%' in unistr(t2)
+          expected = '' if group == 'boolean' else str(answer(a1, a2))
+          expected_truth = False if fn == 'and' else '%' in str(t2)
           generated_cases.append(pytest.param(
             fmt, expected, expected_truth, cs_01,
             id="%s:arity2literal<'%s' = '%s'>" % (group, fmt, expected)))
@@ -1243,7 +1243,7 @@ def generate_tests():
         val2 = resolve_int_var(t2s, cs_01, stripped=True)
 
         if group == 'arithmetic':
-          expected = unistr(answer(val1, val2))
+          expected = str(answer(val1, val2))
           expected_truth = (
               t1s.strip(stripchars) in cs_01
               or t2s.strip(stripchars) in cs_01)
@@ -1299,11 +1299,11 @@ def generate_tests():
         ('  -1!a', '-1- ', ' -2 -9-  ', '-3a bc  '),
         ('  -1!a', '-1- ', ' -2 -9-  ', '-3a bc  ', '10-')
     ):
-      fmt = '$%s(%s)' % (fn, ','.join(map(unistr, t)))
+      fmt = '$%s(%s)' % (fn, ','.join(map(str, t)))
       ts = [x for x in
             map(lambda x:
                 x.lstrip('% ').replace('2 -9-', '2').rstrip(stripchars),
-              map(unistr, t))]
+              map(str, t))]
       vals = [resolve_int_var(x, cs_01, stripped=True) for x in ts]
 
       if group == 'boolean':
@@ -1312,7 +1312,7 @@ def generate_tests():
         expected = answer(vals[0], vals[1])
         for x in vals[2:]:
           expected = answer(expected, x)
-        expected = unistr(expected)
+        expected = str(expected)
 
       if group == 'boolean':
         try:
@@ -1378,7 +1378,7 @@ for fn in ('min', 'max'):
         lambda x: len([e2 for e2 in filter((
           lambda y: '%' in y), x)]) > 0), case[0])]) > 0:
       negated = ['-' + x for x in case[0]]
-      expected = unistr(-int(max_expected if fn == 'min' else min_expected))
+      expected = str(-int(max_expected if fn == 'min' else min_expected))
       fmt = '$%s(%s)' % (fn, ','.join(negated))
       test_eval_cases.append(pytest.param(
         fmt, expected, expected_truth, cs_01,
@@ -1443,7 +1443,62 @@ encoding_tests = {
 }
 
 
-class TestTitleFormat:
+atoms = [
+    False, True, None, '', 'nonempty',
+    EvaluatorAtom(None),
+    EvaluatorAtom(None, True),
+    EvaluatorAtom(''),
+    EvaluatorAtom('', True),
+    EvaluatorAtom('nonempty'),
+    EvaluatorAtom('nonempty', True),
+    EvaluatorAtom(0),
+    EvaluatorAtom(0, True),
+    EvaluatorAtom(123),
+    EvaluatorAtom(123, True),
+]
+
+atoms = [*atoms, *map(lambda x: lambda: x, atoms)]
+
+bool_atoms = [*zip(atoms, [
+    False, True, False, False, False,
+    False, True, False, True, False, True, False, True, False, True,
+  ] * 2)]
+
+str_atoms = [*zip(atoms, [
+    EvaluatorAtom(None, False),
+    EvaluatorAtom(None, True),
+    EvaluatorAtom(None, False),
+    EvaluatorAtom('', False),
+    EvaluatorAtom('nonempty', False),
+    EvaluatorAtom(None, False),
+    EvaluatorAtom(None, True),
+    EvaluatorAtom('', False),
+    EvaluatorAtom('', True),
+    EvaluatorAtom('nonempty', False),
+    EvaluatorAtom('nonempty', True),
+    EvaluatorAtom(0, False),
+    EvaluatorAtom(0, True),
+    EvaluatorAtom(123, False),
+    EvaluatorAtom(123, True),
+  ] * 2)]
+
+
+@pytest.mark.api
+class TestTitleformat_APITests:
+  @pytest.mark.parametrize('cond,atomized_cond', bool_atoms)
+  @pytest.mark.parametrize('then_case,atomized_then_case', str_atoms)
+  def test_foo_if__2(self, cond, atomized_cond, then_case, atomized_then_case):
+    if callable(cond): print(f'cond = lambda -> {repr(cond())}')
+    else: print(f'cond = {repr(cond)}')
+    if callable(then_case): print(f'then = lambda -> {repr(then_case)}')
+    else: print(f'then = {repr(then_case)}')
+
+    result_atom = titleformat.foo_if__2(cond, then_case)
+    assert result_atom == (atomized_then_case if atomized_cond else None)
+
+
+@pytest.mark.known
+class TestTitleformat_KnownValues:
   @pytest.mark.parametrize('compiled', [
     pytest.param(False, id='interpreted'),
     pytest.param(True, id='compiled'),
@@ -1478,7 +1533,7 @@ class TestTitleFormat:
 
 
 def run_tests():
-  ttf = TestTitleFormat()
+  ttf = TestTitleformat_KnownValues()
   for t in test_eval_cases:
     ttf.test_eval(*t.values, 0)
     ttf.test_eval(*t.values, 1)

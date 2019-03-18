@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 # vim:ts=2:sw=2:et:ai
 
-from __future__ import unicode_literals
-
 from functools import reduce
+from typing import Any, Callable, List, Tuple
 
 import binascii
 import codecs
+import contextvars
 import itertools
 import os
 import platform
@@ -15,8 +15,6 @@ import random
 import re
 import sys
 import unicodedata
-
-from .common import dbg
 
 
 class EvaluatorAtom(object):
@@ -116,6 +114,9 @@ class EvaluatorAtom(object):
   def __hash__(self):
     return hash((self.value, self.truth))
 
+  def __int__(self):
+    return intify(self.value)
+
   def __str__(self):
     return str(self.value)
 
@@ -139,13 +140,39 @@ class EvaluatorAtom(object):
     return self
 
 
-def magic_map_filename(formatter, track):
+_ctx_track = contextvars.ContextVar('track', default=None)
+_ctx_memory = contextvars.ContextVar('memory', default=None)
+
+
+class _TitleformatContextManager(object):
+  __slots__ = 'track', 'memory', 'track_token', 'memory_token'
+
+  def __init__(self, track, memory):
+    self.track = track
+    self.memory = memory
+    self.track_token, self.memory_token = None, None
+
+  def __enter__(self):
+    self.track_token = _ctx_track.set(self.track)
+    self.memory_token = _ctx_memory.set(self.memory)
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    _ctx_track.reset(self.track_token)
+    _ctx_memory.reset(self.memory_token)
+
+
+def tfcontext(track=None, memory=None):
+  return _TitleformatContextManager(track, memory)
+
+
+def magic_map_filename(track):
   value = track.get('@')
   if value is not None and value is not False:
     return str(foo_filename(None, None, [value]))
   return None
 
-def magic_map_filename_ext(formatter, track):
+
+def magic_map_filename_ext(track):
   value = track.get('@')
   if value is not None and value is not False:
     filename = str(foo_filename(None, None, [value]))
@@ -155,12 +182,14 @@ def magic_map_filename_ext(formatter, track):
     return filename
   return None
 
-def magic_map_track_artist(formatter, track):
+
+def magic_map_track_artist(track):
   artist = resolve_magic_var(track, 'artist')
   album_artist = resolve_magic_var(track, 'album artist')
   if artist != album_artist:
     return artist
   return None
+
 
 def __find_tracknumber(track):
   value = track.get('TRACKNUMBER')
@@ -170,11 +199,13 @@ def __find_tracknumber(track):
     return track.get('TRACK')
   return value
 
+
 def magic_map_tracknumber(track):
   value = __find_tracknumber(track)
   if value is not None and value is not False:
     return value.zfill(2)
   return None
+
 
 def magic_map_track_number(track):
   value = __find_tracknumber(track)
@@ -202,205 +233,207 @@ magic_mappings = {
     '_date_': ['DATE'],
 }
 
-def __foo_int(n):
-  # Note that this "string value" might actually already be an int, in which
-  # case, this function simply ends up stripping the atom wrapper.
-  try:
-    if n is not None and n != '':
-      return int(n.value)
-  except AttributeError:
+
+__sub_int_trailing = re.compile(r'(?<=[0-9])[^0-9].*$').sub
+
+
+def intify(whatever: Any) -> int:
+  if whatever in (None, ''):
+    return 0
+  if callable(whatever):
     try:
-      return int(n)
-    except ValueError:
-      return 0
+      return int(whatever())
+    except:
+      try:
+        return int(__sub_int_trailing('', whatever()))
+      except:
+        pass
+  else:
+    try:
+      return int(whatever)
+    except:
+      try:
+        return int(__sub_int_trailing('', whatever))
+      except:
+        pass
   return 0
 
-def __foo_va_conv_n_unsafe(n):
-  strval = ''
-  truth = False
 
-  integer_value = 0
+def atomize(obj):
+  if isinstance(obj, EvaluatorAtom):
+    return obj
+  elif callable(obj):
+    return atomize_noncallable(obj())
+  elif isinstance(obj, bool):
+    return EvaluatorAtom(None, obj)
+  return EvaluatorAtom(obj)
 
-  try:
-    strval = n.value.strip()
-    truth = n.truth
-  except AttributeError:
-    strval = n
-    try:
-      strval = strval.strip()
-    except AttributeError:
-      pass
 
-  if strval:
-    try:
-      integer_value = int(strval)
-    except ValueError:
-      start = 1 if strval[0] == '-' else 0
-      last_found_number = -1
-      try:
-        for i in range(start, len(strval)):
-          if int(strval[i]) >= 0:
-            last_found_number = i
-      except ValueError:
-        if last_found_number >= 0:
-          integer_value = int(strval[0:last_found_number+1])
+def atomize_noncallable(obj):
+  if isinstance(obj, EvaluatorAtom):
+    return obj
+  elif isinstance(obj, bool):
+    return EvaluatorAtom(None, obj)
+  return EvaluatorAtom(obj)
 
-  return EvaluatorAtom(integer_value, truth)
 
-def __foo_va_conv_n(n):
-  try:
-    return __foo_va_conv_n_unsafe(n)
-  except ValueError:
-    pass
-  except KeyError:
-    pass
+def atomize_int(obj):
+  if isinstance(obj, EvaluatorAtom):
+    obj.value = intify(obj.value)
+    return obj
+  elif isinstance(obj, int):
+    return EvaluatorAtom(obj)
+  elif callable(obj):
+    return atomize_int_noncallable(obj())
+  return EvaluatorAtom(intify(obj))
 
-  try:
-    return EvaluatorAtom(0, n.truth)
-  except AttributeError:
-    pass
 
-  return EvaluatorAtom(0, False)
+def atomize_int_noncallable(obj):
+  if isinstance(obj, EvaluatorAtom):
+    obj.value = intify(obj.value)
+    return obj
+  elif isinstance(obj, int):
+    return EvaluatorAtom(obj)
+  return EvaluatorAtom(intify(obj))
 
-def __foo_va_conv_n_lazy(n):
-  return __foo_va_conv_n(n.eval())
 
-def __foo_va_conv_bool_lazy(b):
-  try:
-    value = b.eval()
-    try:
-      return value.truth
-    except AttributeError:
-      return value
-  except AttributeError:
-    if b:
-      return True
+def boolify(obj):
+  if isinstance(obj, (EvaluatorAtom, bool)):
+    return bool(obj)
+  elif callable(obj):
+    return boolify_noncallable(obj())
   return False
 
-def __foo_va_conv_n_lazy_int(n):
-  return __foo_int(__foo_va_conv_n_lazy(n))
 
-def __foo_va_lazy(x):
-  return x.eval()
+def boolify_noncallable(obj):
+  if isinstance(obj, (EvaluatorAtom, bool)):
+    return bool(obj)
+  return False
 
-def foo_true(*unused_va, track=None, memory=None):
+
+def stringify(obj):
+  if isinstance(obj, (EvaluatorAtom, str, int)):
+    return str(obj)
+  elif callable(obj):
+    return stringify_noncallable(obj())
+  return ''
+
+
+def stringify_noncallable(obj):
+  if isinstance(obj, (EvaluatorAtom, str, int)):
+    return str(obj)
+  return ''
+
+
+def foo_true(*unused_va):
   return True
 
-def foo_false(*unused_va, track=None, memory=None):
+
+def foo_false(*unused_va):
   pass
 
-def foo_zero(*unused_va, track=None, memory=None):
+
+def foo_zero(*unused_va):
   return '0'
 
-def foo_one(*unused_va, track=None, memory=None):
+
+def foo_one(*unused_va):
   return '1'
 
-def foo_nop(*va, track=None, memory=None):
-  return va[0].eval()
 
-def foo_unknown(*unused_va, track=None, memory=None):
+def foo_nop(*va):
+  return atomize(va[0])
+
+
+def foo_unknown(*unused_va):
   return '[UNKNOWN FUNCTION]'
 
-nnop_known_table = {
-    '' : '0',
-    '-' : '0',
-    '-0' : '0',
-}
 
-def foo_nnop(*va, track=None, memory=None):
-  val = va[0].eval()
+def foo_nnop(*va):
+  val = atomize_int(va[0])
+  val.value = str(val.value)
+  return val
 
-  try:
-    try:
-      val.value = nnop_known_table[val.value]
-      return val
-    except KeyError:
-      pass
 
-    val = __foo_va_conv_n_unsafe(val)
-    val.value = str(val.value)
-    return val
-  except AttributeError:
-    pass
-  except ValueError:
-    pass
-  except KeyError:
-    pass
+def foo_bnop(*va):
+  return boolify(va[0])
 
-  return '0'
-
-def foo_bnop(*va, track=None, memory=None):
-  return __foo_va_conv_bool_lazy(va[0])
 
 def foo_invalid(fn):
   error_str = f'[INVALID ${fn.upper()} SYNTAX]'
-  return lambda *args, track=None, memory=None: error_str
+  return lambda *args: error_str
 
-def foo_if_arity2(*cond_then, track=None, memory=None):
-  if cond_then[0].eval():
-    return cond_then[1].eval()
 
-def foo_if_arity3(*cond_then_else, track=None, memory=None):
-  if cond_then_else[0].eval():
-    return cond_then_else[1].eval()
-  return cond_then_else[2].eval()
+def foo_if__2(cond, then_case):
+  if boolify(cond):
+    return atomize(then_case)
 
-def foo_if2(*a_else, track=None, memory=None):
-  return a_else[0].eval() if a_else[0].eval() else a_else[1].eval()
 
-def foo_if3(*a1_a2_aN_else, track=None, memory=None):
-  for i in range(0, len(a1_a2_aN_else) - 1):
-    if a1_a2_aN_else[i].eval():
-      return a1_a2_aN_else[i].eval()
-  return a1_a2_aN_else[-1].eval()
+def foo_if__3(cond, then_case, else_case):
+  return atomize(then_case) if boolify(cond) else atomize(else_case)
 
-def foo_ifequal(*n1_n2_then_else, track=None, memory=None):
-  n1 = __foo_va_conv_n_lazy_int(n1_n2_then_else[0])
-  n2 = __foo_va_conv_n_lazy_int(n1_n2_then_else[1])
-  if n1 == n2:
-    return n1_n2_then_else[2].eval()
-  return n1_n2_then_else[3].eval()
 
-def foo_ifgreater(*n1_n2_then_else, track=None, memory=None):
-  n1 = __foo_va_conv_n_lazy_int(n1_n2_then_else[0])
-  n2 = __foo_va_conv_n_lazy_int(n1_n2_then_else[1])
-  if n1 > n2:
-    return n1_n2_then_else[2].eval()
-  return n1_n2_then_else[3].eval()
+def foo_if2(a, else_case):
+  return atomize(a) or atomize(else_case)
 
-def foo_iflonger(*s_n_then_else, track=None, memory=None):
-  n = __foo_va_conv_n_lazy_int(s_n_then_else[1])
-  if len(s_n_then_else[0].eval()) > n:
-    return s_n_then_else[2].eval()
-  return s_n_then_else[3].eval()
 
-def foo_select(*n_a1_aN, track=None, memory=None):
-  n = __foo_va_conv_n_lazy_int(n_a1_aN[0])
+def foo_if3(*a1_a2_aN_else):
+  for i in range(len(a1_a2_aN_else) - 1):
+    aN = atomize(a1_a2_aN_else[i])
+    if aN:
+      return aN
+  return atomize(a1_a2_aN_else[-1])
+
+
+def foo_ifequal(n1, n2, then_case, else_case):
+  if intify(n1) == intify(n2):
+    return atomize(then_case)
+  else:
+    return atomize(else_case)
+
+
+def foo_ifgreater(n1, n2, then_case, else_case):
+  if intify(n1) > intify(n2):
+    return atomize(then_case)
+  else:
+    return atomize(else_case)
+
+
+def foo_iflonger(s, n, then_case, else_case):
+  if len(atomize(s)) > intify(n):
+    return atomize(then_case)
+  return atomize(else_case)
+
+
+def foo_select(*n_a1_aN):
+  n = intify(n_a1_aN[0])
   if n > 0 and n <= len(n_a1_aN) - 1:
-    return n_a1_aN[n].eval()
+    return atomize(n_a1_aN[n])
 
-def foo_select2(*n_a1_a2, track=None, memory=None):
-  if __foo_va_conv_n_lazy_int(n_a1_a2[0]) == 1:
-    return n_a1_a2[1].eval()
 
-def foo_add(*aN, track=None, memory=None):
-  value = __foo_va_conv_n_lazy(aN[0])
+def foo_select_2(n, a1):
+  # This is just here as an optimization for poorly-written titleformats.
+  if intify(n) == 1:
+    return atomize(a1)
+
+
+def foo_add(*aN):
+  value = atomize_int(aN[0])
   for a in aN[1:]:
-    value += __foo_va_conv_n_lazy(a)
+    value += atomize_int(a)
   return value
 
-def foo_div(*aN, track=None, memory=None):
-  value = __foo_va_conv_n_lazy(aN[0])
+
+def foo_div(*aN):
+  value = atomize_int(aN[0])
   for a in aN[1:]:
-    value //= __foo_va_conv_n_lazy(a)
+    value //= atomize_int(a)
   return value
 
-def foo_greater(*a_b, track=None, memory=None):
-  a = __foo_va_conv_n_lazy_int(a_b[0])
-  b = __foo_va_conv_n_lazy_int(a_b[1])
-  if a > b:
-    return True
-  return False
+
+def foo_greater(a, b):
+  return intify(a) > intify(b)
+
 
 def __foo_max_logic(a, b):
   if a > b:
@@ -409,11 +442,14 @@ def __foo_max_logic(a, b):
   b |= a
   return b
 
-def foo_max(*a_b, track=None, memory=None):
-  return __foo_max_logic(*map(__foo_va_conv_n_lazy, a_b))
 
-def foo_maxN(*aN, track=None, memory=None):
-  return reduce(__foo_max_logic, map(__foo_va_conv_n_lazy, aN))
+def foo_max(a, b):
+  return __foo_max_logic(atomize_int(a), atomize_int(b))
+
+
+def foo_maxN(*aN):
+  return reduce(__foo_max_logic, map(atomize_int, aN))
+
 
 def __foo_min_logic(a, b):
   if a < b:
@@ -422,74 +458,87 @@ def __foo_min_logic(a, b):
   b |= a
   return b
 
-def foo_min(*a_b, track=None, memory=None):
-  return __foo_min_logic(*map(__foo_va_conv_n_lazy, a_b))
 
-def foo_minN(*aN, track=None, memory=None):
-  return reduce(__foo_min_logic, map(__foo_va_conv_n_lazy, aN))
+def foo_min(a, b):
+  return __foo_min_logic(atomize_int(a), atomize_int(b))
 
-def foo_mod(*a_b, track=None, memory=None):
-  a = __foo_va_conv_n_lazy(a_b[0])
-  b = __foo_va_conv_n_lazy(a_b[1])
-  a %= b
+
+def foo_minN(*aN):
+  return reduce(__foo_min_logic, map(atomize_int, aN))
+
+
+def foo_mod(a, b):
+  a = atomize_int(a)
+  a %= atomize_int(b)
   return a
 
-def foo_modN(*aN, track=None, memory=None):
-  value = __foo_va_conv_n_lazy(aN[0])
+
+def foo_modN(*aN):
+  value = atomize_int(aN[0])
   for a in aN[1:]:
-    value %= __foo_va_conv_n_lazy(a)
+    value %= atomize_int(a)
   return value
 
-def foo_mul(*aN, track=None, memory=None):
-  value = __foo_va_conv_n_lazy(aN[0])
+
+def foo_mul(*aN):
+  value = atomize_int(aN[0])
   for a in aN[1:]:
-    value *= __foo_va_conv_n_lazy(a)
+    value *= atomize_int(a)
   return value
 
-def foo_muldiv(*a_b_c, track=None, memory=None):
-  c = __foo_va_conv_n_lazy(a_b_c[2])
+
+def foo_muldiv(a, b, c):
+  c = atomize_int(c)
   c.truth = True  # Truth behavior confirmed by experimentation.
   if c.value == 0:
     # This is real Foobar behavior for some reason, probably a bug.
     c.value = -1
     return c
-  a = __foo_va_conv_n_lazy(a_b_c[0])
-  a *= __foo_va_conv_n_lazy(a_b_c[1])
+  a = atomize_int(a)
+  a *= atomize_int(b)
   a //= c
   return a
 
-def foo_rand(*unused_va, track=None, memory=None):
+
+def foo_rand():
   random.seed()
   return random.randint(0, sys.maxint)
 
-def foo_sub(*aN, track=None, memory=None):
-  value = __foo_va_conv_n_lazy(aN[0])
+
+def foo_sub(*aN):
+  value = atomize_int(aN[0])
   for a in aN[1:]:
-    value -= __foo_va_conv_n_lazy(a)
+    value -= atomize_int(a)
   return value
 
-def foo_and(*expr, track=None, memory=None):
+
+def foo_and(*expr):
   for each in expr:
-    if not __foo_va_conv_bool_lazy(each):
+    if not boolify(each):
       return False
   return True
 
-def foo_or(*expr, track=None, memory=None):
+
+def foo_or(*expr):
   for each in expr:
-    if __foo_va_conv_bool_lazy(each):
+    if boolify(each):
       return True
   return False
 
-def foo_not(*expr, track=None, memory=None):
-  return not __foo_va_conv_bool_lazy(expr[0])
 
-def foo_xor(*expr, track=None, memory=None):
+def foo_not(expr):
+  return not boolify(expr)
+
+
+def foo_xor(*expr):
   r = False
   for each in expr:
-    r ^= __foo_va_conv_bool_lazy(each)
+    r ^= boolify(each)
   return r
 
+
 __foo_abbr_charstrip = re.compile('[()/\\\\,]')
+
 
 def foo_abbr(value):
   parts = __foo_abbr_charstrip.sub(' ', value).split(' ')
@@ -505,14 +554,16 @@ def foo_abbr(value):
           abbr += each[0]
   return abbr
 
-def foo_abbr1(*x, track=None, memory=None):
-  x = x[0].eval()
+
+def foo_abbr1(x):
+  x = atomize(x)
   x.value = foo_abbr(str(x))
   return x
 
-def foo_abbr2(*x_len, track=None, memory=None):
-  x = x_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(x_len[1])
+
+def foo_abbr2(x, length):
+  x = atomize(x)
+  length = intify(length)
   sx = str(x)
   if len(sx) > length:
     x.value = foo_abbr(sx)
@@ -580,6 +631,7 @@ def __foo_ansi_replace(exc):
     return (s, exc.end)
   return codecs.replace_error(exc)
 
+
 def __foo_ascii_replace(exc):
   if isinstance(exc, UnicodeEncodeError):
     s = ''
@@ -593,19 +645,23 @@ codecs.register_error('__foo_ansi_replace', __foo_ansi_replace)
 codecs.register_error('__foo_ascii_replace', __foo_ascii_replace)
 
 
-def foo_ansi(*x, track=None, memory=None):
-  x = x[0].eval()
+def foo_ansi(x):
+  x = atomize(x)
   # Doing the conversion this way will probably not produce the same output with
   # wide characters as Foobar, which produces two '??' instead of one. I don't
   # have a multibyte build of Python lying around right now, so I can't
   # confirm at the moment. But really, it probably doesn't matter.
-  result = str(x).encode('windows-1252', '__foo_ansi_replace')
-  return EvaluatorAtom(str(result, 'windows-1252', 'replace'), bool(x))
+  x.value = str(str(x)
+      .encode('windows-1252', '__foo_ansi_replace'), 'windows-1252', 'replace')
+  return x
 
-def foo_ascii(*x, track=None, memory=None):
-  x = x[0].eval()
-  result = str(x).encode('ascii', '__foo_ascii_replace')
-  return EvaluatorAtom(result.decode('utf-8', 'replace'), bool(x))
+
+def foo_ascii(x):
+  x = atomize(x)
+  x.value = (str(x)
+      .encode('ascii', '__foo_ascii_replace')
+      .decode('utf-8', 'replace'))
+  return x
 
 
 __caps_sep = r'^|[ /|(,)[\]\\]'
@@ -622,21 +678,25 @@ del __caps_word
 def __caps_sub_repl(match):
   return f'{match.group(1)}{match.group(2).upper()}{match.group(3).lower()}'
 
+
 def __caps2_sub_repl(match):
   return f'{match.group(1)}{match.group(2).upper()}'
 
-def foo_caps(*x, track=None, memory=None):
-  x = x[0].eval()
-  return EvaluatorAtom(
-      __caps_sub_pattern.sub(__caps_sub_repl, str(x)), bool(x))
 
-def foo_caps2(*x, track=None, memory=None):
-  x = x[0].eval()
-  return EvaluatorAtom(
-      __caps2_sub_pattern.sub(__caps2_sub_repl, str(x)), bool(x))
+def foo_caps(x):
+  x = atomize(x)
+  x.value = __caps_sub_pattern.sub(__caps_sub_repl, str(x))
+  return x
 
-def foo_char(*x, track=None, memory=None):
-  x = __foo_va_conv_n_lazy_int(x[0])
+
+def foo_caps2(x):
+  x = atomize(x)
+  x.value = __caps2_sub_pattern.sub(__caps2_sub_repl, str(x))
+  return x
+
+
+def foo_char(x):
+  x = intify(x)
   if x <= 0:
     return ''
   if x > 1048575:
@@ -651,143 +711,126 @@ def foo_char(*x, track=None, memory=None):
   except OverflowError:
     return ''
 
-def foo_crc32(*x, track=None, memory=None):
-  x = x[0].eval()
-  crc = binascii.crc32(bytes(x))
-  return EvaluatorAtom(crc, bool(x))
 
-def foo_crlf(*unused_va, track=None, memory=None):
+def foo_crc32(x):
+  x = atomize(x)
+  x.value = binascii.crc32(bytes(x))
+  return x
+
+
+def foo_crlf():
   return '\r\n'
+
 
 # foo_cut is the same as foo_left; see definition for it below
 
-def foo_directory_1(*x, track=None, memory=None):
-  x = x[0].eval()
+
+def foo_directory_1(x):
+  x = atomize(x)
   # RFC 8089 allows pipe characters to be used instead of the colons in the
   # drive construct, and Foobar obeys this. For more information, see:
   # https://tools.ietf.org/html/rfc8089#appendix-E.2.2
   parts = re.split('[\\\\/:|]', str(x))
-  if len(parts) < 2:
-    return EvaluatorAtom('', bool(x))
-  return EvaluatorAtom(parts[-2], bool(x))
+  x.value = '' if len(parts) < 2 else parts[-2]
+  return x
 
-def foo_directory_2(*x_n, track=None, memory=None):
-  x = x_n[0].eval()
-  n = __foo_va_conv_n_lazy_int(x_n[1])
+
+def foo_directory_2(x, n):
+  x = atomize(x)
+  n = intify(n)
   if n <= 0:
-    return EvaluatorAtom('', bool(x))
+    x.value = ''
+    return x
   parts = re.split('[\\\\/:|]', str(x))
   parts_len = len(parts)
-  if n >= parts_len or parts_len < 2:
-    return EvaluatorAtom('', bool(x))
-  return EvaluatorAtom(parts[parts_len - n - 1], bool(x))
+  x.value = '' if n >= parts_len or parts_len < 2 else parts[parts_len - n - 1]
+  return x
 
-def foo_directory_path(*x, track=None, memory=None):
-  x = x[0].eval()
+
+def foo_directory_path(x):
+  x = atomize(x)
   parts = re.split('[\\\\/:|]', str(x)[::-1], 1)
-  if len(parts) < 2:
-    return EvaluatorAtom('', bool(x))
-  return EvaluatorAtom(parts[1][::-1], bool(x))
+  x.value = '' if len(parts) < 2 else parts[1][::-1]
+  return x
 
-def foo_ext(*x, track=None, memory=None):
-  x = x[0]
 
-  try:
-    x = x.eval()
-  except AttributeError:
-    pass
+def foo_ext(x):
+  x = atomize(x)
 
   _, delimiter, ext = str(x).rpartition('.')
 
   if not delimiter or any(c in '/\\|:' for c in ext):
     return ''
 
-  return EvaluatorAtom(ext.partition('?')[0], bool(x))
+  x.value = ext.partition('?')[0]
+  return x
 
-def foo_filename(*x, track=None, memory=None):
-  x = x[0]
 
-  try:
-    x = x.eval()
-  except AttributeError:
-    pass
-
+def foo_filename(x):
+  x = atomize(x)
   parts = re.split('[\\\\/:|]', str(x))
+  x.value = parts[-1].partition('?')[0].rsplit('.', 1)[0]
+  return x
 
-  return EvaluatorAtom(
-      parts[-1].partition('?')[0].rsplit('.', 1)[0], bool(x))
 
-def foo_fix_eol_1(*x, track=None, memory=None):
-  return foo_fix_eol(x[0], ' (...)')
-
-def foo_fix_eol_2(*x_indicator, track=None, memory=None):
-  return foo_fix_eol(*x_indicator)
-
-def foo_fix_eol(x, indicator):
-  try:
-    x = x.eval()
-  except AttributeError:
-    pass
-
-  try:
-    indicator = str(indicator.eval())
-  except AttributeError:
-    pass
-
+def foo_fix_eol(x, indicator=' (...)'):
+  x = atomize(x)
   parts = re.split('[\r\n]', str(x), 1)
 
   if len(parts) > 1:
-    return EvaluatorAtom(parts[0] + indicator, bool(x))
+    x.value = parts[0] + stringify(indicator)
 
   return x
 
-def foo_hex_1(*n, track=None, memory=None):
+
+def foo_hex(n, length=0):
   # While technically in the documentation, $hex(n) doesn't actually do anything
   # as of foobar2000 1.4.2. This is probably a bug that no one has noticed. This
   # documentation-based implementation is provided for non-compliant uses.
-  return foo_hex(n[0], 0)
-
-def foo_hex_2(*n_len, track=None, memory=None):
-  return foo_hex(*n_len)
-
-def foo_hex(*n_len, track=None, memory=None):
-  n = __foo_va_conv_n_lazy(n_len[0])
-  length = __foo_va_conv_n_lazy_int(n_len[1])
+  n = atomize_int(n)
+  length = intify(length)
 
   n.value = hex(
-      max(-0x8000000000000000, min(__foo_int(n), 0x7FFFFFFFFFFFFFFF)
+      max(-0x8000000000000000, min(int(n), 0x7FFFFFFFFFFFFFFF)
         ) % 0x100000000)[2:].upper().zfill(max(0, min(length, 32)))
 
   return n
 
-def foo_insert(*a_b_n, track=None, memory=None):
-  a = a_b_n[0].eval()
-  b = str(a_b_n[1].eval())
-  n = __foo_va_conv_n_lazy_int(a_b_n[2])
+
+def foo_insert(a, b, n):
+  a = atomize(a)
+  b = stringify(b)
+  n = intify(n)
 
   if n < 0:
     a.value += b
   else:
-    a.value = a.value[0:n] + b + a.value[n:]
+    a.value = ''.join([a.value[0:n], b, a.value[n:]])
+
   return a
 
-def foo_left(*a_len, track=None, memory=None):
-  a = a_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(a_len[1])
+
+def foo_left(a, length):
+  a = atomize(a)
+  length = intify(length)
 
   if length >= 0:
     a.value = a.value[0:length]
 
   return a
 
+
 foo_cut = foo_left  # These are the same, so just alias for completeness
 
-def foo_len(*a, track=None, memory=None):
-  a = a[0].eval()
-  return EvaluatorAtom(len(str(a)), bool(a))
 
-def foo_len2(*a, track=None, memory=None):
-  a = a[0].eval()
+def foo_len(a):
+  a = atomize(a)
+  a.value = len(a)
+  return a
+
+
+def foo_len2(a):
+  a = atomize(a)
   length = 0
   str_a = str(a)
   for c in str_a:
@@ -798,47 +841,46 @@ def foo_len2(*a, track=None, memory=None):
     elif width == 'W' or width == 'F' or width == 'A':
       # Wide / Fullwidth / Ambiguous character
       length += 2
-  return EvaluatorAtom(length, bool(a))
+  a.value = length
+  return a
 
-def foo_longer(*a_b, track=None, memory=None):
-  len_a = len(str(a_b[0].eval()))
-  len_b = len(str(a_b[1].eval()))
-  return len_a > len_b
 
-def foo_lower(*a, track=None, memory=None):
-  a = a[0].eval()
-  return EvaluatorAtom(str(a).lower(), bool(a))
+def foo_longer(a, b):
+  return len(stringify(a)) > len(stringify(b))
 
-def foo_longest(*a1_aN, track=None, memory=None):
+
+def foo_lower(a):
+  a = atomize(a)
+  a.value = str(a).lower()
+  return a
+
+
+def foo_longest(*a1_aN):
   longest = None
   longest_len = -1
   for each in a1_aN:
-    current = each.eval()
-    current_len = len(str(current))
+    current = atomize(each)
+    current_len = len(current)
     if current_len > longest_len:
       longest = current
       longest_len = current_len
   return longest
 
-def foo_num(*n_len, track=None, memory=None):
-  n = n_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(n_len[1])
-  value = None
+
+def foo_num(n, length):
+  n = atomize(n)
+  length = intify(length)
   if (length > 0):
-    value = str(__foo_va_conv_n(n)).zfill(length)
+    n.value = str(int(n)).zfill(length)
   else:
-    value = str(__foo_int(__foo_va_conv_n(n)))
-  return EvaluatorAtom(value, bool(n))
+    n.value = str(int(n))
+  return n
 
-def foo_pad_universal(x, length, char, right):
-  x = x_len_char[0].eval()
-  length = __foo_va_conv_n_lazy_int(x_len_char[1])
-  char = x_len_char[2]
 
-  try:
-    char = str(char.eval())[0]
-  except AttributeError:
-    pass
+def _do_foo_pad(x, length, char, pad):
+  x = atomize(x)
+  length = intify(length)
+  char = stringify(char)[0]
 
   if not char:
     return x
@@ -847,40 +889,42 @@ def foo_pad_universal(x, length, char, right):
   x_len = len(x_str)
 
   if x_len < length:
-    padded = None
-    if not right:
-      padded = x_str + char * (length - x_len)
-    else:
-      padded = char * (length - x_len) + x_str
-    return EvaluatorAtom(padded, bool(x))
+    x.value = pad(x_str, x_len, length, char)
   return x
 
-def foo_pad_arity2(*x_len, track=None, memory=None):
-  return foo_pad_universal(*x_len, ' ', False)
 
-def foo_pad_arity3(*x_len_char, track=None, memory=None):
-  return foo_pad_universal(*x_len_char, False)
+def _padleft(x_str: str, x_len: int, length: int, char: str) -> str:
+  return x_str + char * (length - x_len)
 
-def foo_pad_right_arity2(*x_len, track=None, memory=None):
-  return foo_pad_universal(*x_len, ' ', True)
 
-def foo_pad_right_arity3(*x_len_char, track=None, memory=None):
-  return foo_pad_universal(*x_len_char, True)
+def _padright(x_str: str, x_len: int, length: int, char: str) -> str:
+  return char * (length - x_len) + x_str
 
-def foo_padcut(*x_len, track=None, memory=None):
-  return foo_pad_arity2(foo_cut(*x_len), x_len[1])
 
-def foo_padcut_right(*x_len, track=None, memory=None):
-  return foo_pad_right_arity2(foo_cut(*x_len), x_len[1])
+def foo_pad(x, length, char=' '):
+  return _do_foo_pad(x, length, char, _padleft)
 
-def _foo_progress_for(pos_range_len_a_b, proc):
-  pos = pos_range_len_a_b[0].eval()
-  range_value = pos_range_len_a_b[1].eval()
-  length = __foo_va_conv_n_lazy_int(pos_range_len_a_b[2])
-  a = str(pos_range_len_a_b[3].eval())
-  b = str(pos_range_len_a_b[4].eval())
-  pos_int = __foo_int(__foo_va_conv_n(pos))
-  range_int = __foo_int(__foo_va_conv_n(range_value))
+
+def foo_pad_right(x, length, char=' '):
+  return _do_foo_pad(x, length, char, _padright)
+
+
+def foo_padcut(x, length):
+  return foo_pad(foo_cut(x, length), length)
+
+
+def foo_padcut_right(x, length):
+  return foo_pad_right(foo_cut(x, length), length)
+
+
+def _foo_progress_for(pos, range_value, length, a, b, proc):
+  pos = atomize_int(pos)
+  range_value = atomize_int(range_value)
+  length = intify(length)
+  a = stringify(a)
+  b = stringify(b)
+  pos_int = int(pos)
+  range_int = int(range_value)
 
   if range_int < 0:
     range_int = 0
@@ -890,9 +934,10 @@ def _foo_progress_for(pos_range_len_a_b, proc):
   elif pos_int < 0:
     pos_int = 0
 
-  return EvaluatorAtom(
-      proc(pos_int, range_int, length, a, b),
-      foo_and(pos, range_value))
+  pos.value = proc(pos_int, range_int, length, a, b)
+  pos.truth = foo_and(pos, range_value)
+  return pos
+
 
 def _do_foo_progress(
     pos_int: int, range_int: int, length: int, a: str, b: str) -> str:
@@ -915,6 +960,7 @@ def _do_foo_progress(
 
     return b * (cursor_pos - 1) + a + b * (length - cursor_pos)
 
+
 def _do_foo_progress2(
     pos_int: int, range_int: int, length: int, a: str, b: str) -> str:
   if length < 1:
@@ -930,20 +976,24 @@ def _do_foo_progress2(
 
     return a * left_count + b * (length - left_count)
 
-def foo_progress(*pos_range_len_a_b, track=None, memory=None):
-  return _foo_progress_for(pos_range_len_a_b, _do_foo_progress)
 
-def foo_progress2(*pos_range_len_a_b, track=None, memory=None):
-  return _foo_progress_for(pos_range_len_a_b, _do_foo_progress2)
+def foo_progress(pos, range_value, length, a, b):
+  return _foo_progress_for(pos, range_value, length, a, b, _do_foo_progress)
 
-def foo_repeat(*a_n, track=None, memory=None):
-  a = a_n[0].eval()
-  n = __foo_va_conv_n_lazy_int(a_n[1])
-  return EvaluatorAtom(str(a) * n, bool(a))
+
+def foo_progress2(pos, range_value, length, a, b):
+  return _foo_progress_for(pos, range_value, length, a, b, _do_foo_progress2)
+
+
+def foo_repeat(a, n):
+  a = atomize(a)
+  a.value = str(a) * intify(n)
+  return a
+
 
 def foo_replace_explode_recursive(a, a_bN_cN, i):
   if i + 1 < len(a_bN_cN):
-    b = str(a_bN_cN[i].eval())
+    b = stringify(a_bN_cN[i])
     splits = a.split(b)
     current = []
     for each in splits:
@@ -954,6 +1004,7 @@ def foo_replace_explode_recursive(a, a_bN_cN, i):
       current = splits
     return current
 
+
 def foo_replace_join_recursive(splits, a_bN_cN, i):
   if i < len(a_bN_cN):
     current = []
@@ -961,30 +1012,35 @@ def foo_replace_join_recursive(splits, a_bN_cN, i):
       sub_joined = foo_replace_join_recursive(each, a_bN_cN, i + 2)
       if sub_joined is not None:
         current.append(sub_joined)
-    c = str(a_bN_cN[i].eval())
+    c = stringify(a_bN_cN[i])
     if not current:
       current = splits
     joined = c.join(current)
     return joined
 
-def foo_replace(*a_bN_cN, track=None, memory=None):
-  a = a_bN_cN[0].eval()
+
+def foo_replace(*a_bN_cN):
+  a = atomize(a_bN_cN[0])
   splits = foo_replace_explode_recursive(str(a), a_bN_cN, 1)
   result = foo_replace_join_recursive(splits, a_bN_cN, 2)
   # Truthfully, I have no idea if this is actually right, but it's probably good
   # enough for what it does. The sample cases check out, at least.
   return EvaluatorAtom(result, bool(a))
 
-def foo_right(*a_len, track=None, memory=None):
-  a = a_len[0].eval()
-  length = __foo_va_conv_n_lazy_int(a_len[1])
+
+def foo_right(a, length):
+  a = atomize(a)
+  length = intify(length)
   a_str = str(a)
   a_len = len(a_str)
   if a_len == 0 or length >= a_len:
     return a
   elif length <= 0:
-    return EvaluatorAtom('', bool(a))
-  return EvaluatorAtom(a_str[a_len-length:], bool(a))
+    a.value = ''
+  else:
+    a.value = a_str[a_len-length:]
+  return a
+
 
 __roman_numerals = (
     ('M',  1000),
@@ -1002,161 +1058,192 @@ __roman_numerals = (
     ('I',  1),
 )
 
-def foo_roman(*n, track=None, memory=None):
-  n = n[0].eval()
-  n_int = __foo_int(__foo_va_conv_n(n))
+
+def foo_roman(n):
+  n = atomize(n)
+  n_int = int(n)
   result = ''
   if n_int > 0 and n_int <= 100000:
     for numeral, value in __roman_numerals:
       while n_int >= value:
         result += numeral
         n_int -= value
-  return EvaluatorAtom(result, bool(n))
+  n.value = result
+  return n
 
-def foo_rot13(*a, track=None, memory=None):
-  a = a[0].eval()
-  rot = codecs.encode(str(a), 'rot_13')
-  return EvaluatorAtom(rot, bool(a))
 
-def foo_shortest(*aN, track=None, memory=None):
+def foo_rot13(a):
+  a = atomize(a)
+  a.value = codecs.encode(str(a), 'rot_13')
+  return a
+
+
+def foo_shortest(*aN):
   shortest = None
   shortest_len = -1
   for each in aN:
-    current = each.eval()
-    current_len = len(str(current))
+    current = atomize(each)
+    current_len = len(current)
     if shortest_len == -1 or current_len < shortest_len:
       shortest = current
       shortest_len = current_len
   return shortest
 
-def foo_strchr(*s_c, track=None, memory=None):
-  s = str(s_c[0].eval())
-  c = str(s_c[1].eval())
+
+def foo_strchr(s, c):
+  # TODO: Need to check if 's' should be evaluated if not c; side effects?
+  s = atomize(s)
+  c = stringify(c)
   if c:
     c = c[0]
-    for i, char in enumerate(s):
+    # TODO: There is a far better implementation of this using str.index()
+    for i, char in enumerate(str(s)):
       if c == char:
-        return EvaluatorAtom(i + 1, True)
-  return EvaluatorAtom(0, False)
+        s.value = i + 1
+        s.truth = True
+        return s
+  s.value, s.truth = 0, False
+  return s
 
-def foo_strrchr(*s_c, track=None, memory=None):
-  s = str(s_c[0].eval())
-  c = str(s_c[1].eval())
+
+def foo_strrchr(s, c):
+  # TODO: Same here, should 's' be evaluated if not c?
+  s = atomize(s)
+  c = stringify(c)
   if c:
     c = c[0]
-    for i, char in itertools.izip(reversed(xrange(len(s))), reversed(s)):
+    sstr = str(s)
+    for i, char in itertools.izip(reversed(xrange(len(sstr))), reversed(sstr)):
       if c == char:
-        return EvaluatorAtom(i + 1, True)
-  return EvaluatorAtom(0, False)
+        s.value = i + 1
+        s.truth = True
+        return s
+  s.value, s.truth = 0, False
+  return s
 
-def foo_strstr(*s1_s2, track=None, memory=None):
-  s1 = str(s1_s2[0].eval())
-  s2 = str(s1_s2[1].eval())
-  found_index = 0
-  if s1 and s2:
-    found_index = s1.find(s2) + 1
-  return EvaluatorAtom(found_index, bool(found_index))
 
-def foo_strcmp(*s1_s2, track=None, memory=None):
-  s1 = s1_s2[0].eval()
-  s2 = s1_s2[1].eval()
-  if str(s1) == str(s2):
-    return EvaluatorAtom(1, True)
-  return EvaluatorAtom('', False)
+def foo_strstr(s1, s2):
+  s1 = atomize(s1)
+  s2 = stringify(s2)
+  s1_str = str(s1)
+  s1.value = s1_str.find(s2) + 1 if s1_str and s2 else 0
+  s1.truth = bool(s1.value)
+  return s1
 
-def foo_stricmp(*s1_s2, track=None, memory=None):
-  s1 = s1_s2[0].eval()
-  s2 = s1_s2[1].eval()
-  if str(s1).lower() == str(s2).lower():
-    return EvaluatorAtom(1, True)
-  return EvaluatorAtom('', False)
 
-def foo_substr(*s_m_n, track=None, memory=None):
-  s = s_m_n[0].eval()
-  m = __foo_va_conv_n_lazy_int(s_m_n[1]) - 1
-  n = __foo_va_conv_n_lazy_int(s_m_n[2])
+def foo_strcmp(s1, s2):
+  s1 = atomize(s1)
+  s2 = stringify(s2)
+  if str(s1) == s2:
+    s1.value, s1.truth = 1, True
+  else:
+    s1.value, s1.truth = '', False
+  return s1
+
+
+def foo_stricmp(s1, s2):
+  s1 = atomize(s1)
+  s2 = stringify(s2)
+  if str(s1).lower() == s2.lower():
+    s1.value, s1.truth = 1, True
+  else:
+    s1.value, s1.truth = '', False
+  return s1
+
+
+def foo_substr(s, m, n):
+  s = atomize(s)
+  m = intify(m) - 1
+  n = intify(n)
   if n < m:
     return EvaluatorAtom('', bool(s))
   if m < 0:
     m = 0
   s_str = str(s)
   s_len = len(s_str)
-  result = None
   if n > s_len:
     n = s_len
   if m == 0 and n == s_len:
     return s
   elif n == s_len:
-    result = s_str[m:]
+    s.value = s_str[m:]
   else:
-    result = s_str[m:n]
-  return EvaluatorAtom(result, bool(s))
+    s.value = s_str[m:n]
+  return s
 
-def _foo_strip_swap_prefix(x_prefixN, should_swap):
-  x = x_prefixN[0].eval()
+
+def _foo_strip_swap_prefix(x, prefixN, should_swap):
+  x = atomize(x)
   x_str = str(x)
   x_str_lower = x_str.lower()
 
-  for i in range(1, len(x_prefixN)):
-    prefix = x_prefixN[i]
-
-    try:
-      prefix = str(prefix.eval())
-    except AttributeError:
-      pass
+  for prefix in prefixN:
+    prefix = stringify(prefix)
 
     if x_str_lower.startswith(prefix.lower() + ' '):
       prefix_len = len(prefix)
-      result = x_str[prefix_len+1:]
+      x.value = x_str[prefix_len+1:]
 
       if should_swap:
-        actual_prefix = x_str[0:prefix_len]
-        result += ', ' + actual_prefix
-
-      return EvaluatorAtom(result, bool(x))
+        x.value = f'{x.value}, {x_str[0:prefix_len]}'
 
   return x
 
-def foo_stripprefix_arity1(*x, track=None, memory=None):
-  return _foo_strip_swap_prefix((x[0], 'A', 'The'), False)
 
-def foo_stripprefix_arityN(*x_prefixN, track=None, memory=None):
-  return _foo_strip_swap_prefix(x_prefixN, False)
+def foo_stripprefix__1(x):
+  return _foo_strip_swap_prefix(x, ('A', 'The'), False)
 
-def foo_swapprefix_arity1(*x, track=None, memory=None):
-  return _foo_strip_swap_prefix((x[0], 'A', 'The'), True)
 
-def foo_swapprefix_arityN(*x_prefixN, track=None, memory=None):
-  return _foo_strip_swap_prefix(x_prefixN, True)
+def foo_stripprefix_arityN(x, *prefixN):
+  return _foo_strip_swap_prefix(x, prefixN, False)
 
-def foo_trim(*s, track=None, memory=None):
-  s = s[0].eval()
-  return EvaluatorAtom(str(s).strip(), bool(s))
 
-def foo_tab_arity0(*unused_va, track=None, memory=None):
+def foo_swapprefix__1(x):
+  return _foo_strip_swap_prefix(x, ('A', 'The'), True)
+
+
+def foo_swapprefix_arityN(x, *prefixN):
+  return _foo_strip_swap_prefix(x, prefixN, True)
+
+
+def foo_trim(s):
+  s = atomize(s)
+  s.value = str(s).strip()
+  return s
+
+
+def foo_tab__0():
   return '\t'
 
-def foo_tab_arity1(*n, track=None, memory=None):
-  n = __foo_va_conv_n_lazy_int(n[0])
+
+def foo_tab__1(n):
+  n = intify(n)
   if n < 0 or n > 16:
     n = 16
   return '\t' * n
 
-def foo_upper(*s, track=None, memory=None):
-  s = s[0].eval()
-  return EvaluatorAtom(str(s).upper(), bool(s))
 
-def foo_meta_arity1(*name, track=None, memory=None):
-  return foo_meta_sep_arity2(name, ', ', track=track)
+def foo_upper(s):
+  s = atomize(s)
+  s.value = str(s).upper()
+  return s
 
-def foo_meta_arity2(*name_n, track=None, memory=None):
-  name = str(name_n[0].eval())
-  n = __foo_va_conv_n_lazy_int(name_n[1])
+
+def foo_meta__1(name, track=None):
+  return foo_meta_sep__2(name, ', ', track=track)
+
+
+def foo_meta__2(name, n, track=None):
+  name = atomize(name)
+  n = intify(n)
   if n < 0:
     return False
-  value = track.get(name)
+  if track is None:
+    track = _ctx_track.get()
+  name_str = str(name)
+  value = track.get(name_str)
   if not value:
-    value = track.get(name.upper())
+    value = track.get(name_str.upper())
     if not value:
       return False
   if isinstance(value, list):
@@ -1165,33 +1252,39 @@ def foo_meta_arity2(*name_n, track=None, memory=None):
     value = value[n]
   elif n != 0:
     return False
-  return EvaluatorAtom(value, True)
+  name.value = value
+  name.truth = True
+  return name
 
-def foo_meta_sep_arity2(*name_sep, track=None, memory=None):
-  name = str(name_sep[0].eval())
 
-  sep = name_sep[1]
-  try:
-    sep = str(sep.eval())
-  except AttributeError:
-    pass
-
-  value = track.get(name)
+def foo_meta_sep__2(name, sep, track=None):
+  name = atomize(name)
+  sep = stringify(sep)
+  name_str = str(name)
+  if track is None:
+    track = _ctx_track.get()
+  value = track.get(name_str)
   if not value:
-    value = track.get(name.upper())
+    value = track.get(name_str.upper())
     if not value:
       return False
   if isinstance(value, list):
     value = sep.join(value)
-  return EvaluatorAtom(value, True)
+  name.value = value
+  name.truth = True
+  return name
 
-def foo_meta_sep_arity3(*name_sep_lastsep, track=None, memory=None):
-  name = str(name_sep_lastsep[0].eval())
-  sep = str(name_sep_lastsep[1].eval())
-  lastsep = str(name_sep_lastsep[2].eval())
-  value = track.get(name)
+
+def foo_meta_sep__3(name, sep, lastsep, track=None):
+  name = atomize(name)
+  name_str = str(name)
+  sep = stringify(sep)
+  lastsep = stringify(lastsep)
+  if track is None:
+    track = _ctx_track.get()
+  value = track.get(name_str)
   if not value:
-    value = track.get(name.upper())
+    value = track.get(name_str.upper())
     if not value:
       return False
   if isinstance(value, list):
@@ -1199,11 +1292,16 @@ def foo_meta_sep_arity3(*name_sep_lastsep, track=None, memory=None):
       value = sep.join(value[:-1]) + lastsep + value[-1]
     else:
       value = value[0]
-  return EvaluatorAtom(value, True)
+  name.value = value
+  name.truth = True
+  return name
 
-def foo_meta_test(*nameN, track=None, memory=None):
+
+def foo_meta_test(*nameN, track=None):
+  if track is None:
+    track = _ctx_track.get()
   for each in nameN:
-    name = str(each.eval())
+    name = stringify(each)
     value = track.get(name)
     if not value:
       value = track.get(name.upper())
@@ -1211,49 +1309,58 @@ def foo_meta_test(*nameN, track=None, memory=None):
         return False
   return EvaluatorAtom(1, True)
 
-def foo_meta_num(*name, track=None, memory=None):
-  name = str(name[0].eval())
-  value = track.get(name)
+
+def foo_meta_num(name, track=None):
+  name = atomize(name)
+  name_str = str(name)
+  if track is None:
+    track = _ctx_track.get()
+  value = track.get(name_str)
   if not value:
-    value = track.get(name.upper())
+    value = track.get(name_str.upper())
     if not value:
       return 0
-  if isinstance(value, list):
-    return EvaluatorAtom(len(value), True)
-  return EvaluatorAtom(1, True)
+  name.value = len(value) if isinstance(value, list) else 1
+  name.truth = 1
+  return name
 
-def foo_get(*name, track=None, memory=None):
-  name = name[0].eval()
-  name_str = str(name)
-  if name_str == '':
+
+def foo_get(name, memory=None):
+  name = stringify(name)
+  if name == '':
     return False
-  value = memory.get(name_str)
+  if memory is None:
+    memory = _ctx_memory.get()
+  value = memory.get(name)
   if value is not None and value is not False and value != '':
     return EvaluatorAtom(value, True)
   return False
 
-def foo_put(*name_value, track=None, memory=None):
-  name = str(name_value[0].eval())
-  value = name_value[1].eval()
+
+def foo_put(name, value, memory=None):
+  name = stringify(name)
+  value = atomize(value)
   if name != '':
+    if memory is None:
+      memory = _ctx_memory.get()
     memory[name] = str(value)
   return value
 
-def foo_puts(*name_value, track=None, memory=None):
-  value = foo_put(*name_value, track=track, memory=memory)
-  return bool(value)
+
+def foo_puts(name, value, memory=None):
+  return bool(foo_put(name, value, memory))
 
 
 foo_function_vtable = {
     '(default)' : {'n': foo_unknown},
     # TODO: With strict rules, $if 'n' should throw exception
-    'if': {2: foo_if_arity2, 3: foo_if_arity3, 'n': foo_invalid('if')},
+    'if': {2: foo_if__2, 3: foo_if__3, 'n': foo_invalid('if')},
     'if2': {2: foo_if2, 'n': foo_invalid('if2')},
     'if3': {0: foo_false, 1: foo_false, 'n': foo_if3},
     'ifequal': {4: foo_ifequal, 'n': foo_invalid('ifequal')},
     'ifgreater': {4: foo_ifgreater, 'n': foo_invalid('ifgreater')},
     'iflonger': {4: foo_iflonger, 'n': foo_invalid('iflonger')},
-    'select': {0: foo_false, 1: foo_false, 2: foo_select2, 'n': foo_select},
+    'select': {0: foo_false, 1: foo_false, 2: foo_select_2, 'n': foo_select},
     'add': {0: foo_zero, 1: foo_nnop, 'n': foo_add},
     'div': {0: foo_false, 1: foo_nnop, 'n': foo_div},
     # TODO: With strict rules, $greater 'n' should throw exception
@@ -1288,9 +1395,9 @@ foo_function_vtable = {
     'directory_path': {1: foo_directory_path, 'n': foo_false},
     'ext': {1: foo_ext, 'n': foo_false},
     'filename': {1: foo_filename, 'n': foo_false},
-    'fix_eol': {1: foo_fix_eol_1, 2: foo_fix_eol_2, 'n': foo_false},
+    'fix_eol': {1: foo_fix_eol, 2: foo_fix_eol, 'n': foo_false},
     # NOTE: $hex 1 should be foo_hex_1, but foobar2000 actually does nothing
-    'hex': {2: foo_hex_2, 'n': foo_false},
+    'hex': {2: foo_hex, 'n': foo_false},
     'insert': {3: foo_insert, 'n': foo_false},
     'left': {2: foo_left, 'n': foo_false},
     'len': {1: foo_len, 'n': foo_false},
@@ -1299,8 +1406,8 @@ foo_function_vtable = {
     'lower': {1: foo_lower},
     'longest': {0: foo_false, 1: foo_nop, 'n': foo_longest},
     'num': {2: foo_num},
-    'pad': {2: foo_pad_arity2, 3: foo_pad_arity3},
-    'pad_right': {2: foo_pad_right_arity2, 3: foo_pad_right_arity3},
+    'pad': {2: foo_pad, 3: foo_pad},
+    'pad_right': {2: foo_pad_right, 3: foo_pad_right},
     'padcut': {2: foo_padcut},
     'padcut_right': {2: foo_padcut_right},
     'progress': {5: foo_progress, 'n': foo_false},
@@ -1324,19 +1431,19 @@ foo_function_vtable = {
     'substr': {3: foo_substr},
     'stripprefix': {
         0: foo_false,
-        1: foo_stripprefix_arity1,
+        1: foo_stripprefix__1,
         'n': foo_stripprefix_arityN
     },
     'swapprefix': {
         0: foo_false,
-        1: foo_swapprefix_arity1,
+        1: foo_swapprefix__1,
         'n': foo_swapprefix_arityN
     },
     'trim': {1: foo_trim},
-    'tab': {0: foo_tab_arity0, 1: foo_tab_arity1},
+    'tab': {0: foo_tab__0, 1: foo_tab__1},
     'upper': {1: foo_upper},
-    'meta': {1: foo_meta_arity1, 2: foo_meta_arity2},
-    'meta_sep': {2: foo_meta_sep_arity2, 3: foo_meta_sep_arity3},
+    'meta': {1: foo_meta__1, 2: foo_meta__2},
+    'meta_sep': {2: foo_meta_sep__2, 3: foo_meta_sep__3},
     'meta_test': {'n': foo_meta_test},
     'meta_num': {1: foo_meta_num},
     'get': {0: foo_false, 1: foo_get},
@@ -1356,6 +1463,7 @@ def vmarshal(value):
     return None
 
   return EvaluatorAtom(value, False)
+
 
 def vlookup(function, arity):
   try:
@@ -1386,10 +1494,12 @@ def vlookup(function, arity):
           'The function with name "' + function + '" has no definition and no'
           + ' default handler has been defined')
 
-def vinvoke(track, function, argv, memory={}):
+
+def vinvoke(function, argv):
   arity = len(argv)
   funcref = vlookup(function, arity)
-  return vmarshal(funcref(*argv, track=track, memory=memory))
+  return vmarshal(funcref(*argv))
+
 
 def vcallmarshal(atom):
   if atom is None:
@@ -1397,11 +1507,13 @@ def vcallmarshal(atom):
 
   return (str(atom), 1 if atom else 0)
 
+
 def vcondmarshal(atom):
   if not atom:
     return ('', 0)
 
   return (str(atom), 1)
+
 
 def foobar_filename_escape(output):
   system = platform.system()
@@ -1420,21 +1532,18 @@ def foobar_filename_escape(output):
   return output
 
 
-class LazyExpression:
+class LazyExpression(object):
   __slots__ = (
-      'fmt', 'track', 'conditional', 'depth', 'offset', 'memory',
-      'case_sensitive', 'magic', 'for_filename', 'compatible', 'ccache',
-      'value', 'evaluated')
+      'fmt', 'conditional', 'depth', 'offset', 'case_sensitive', 'magic',
+      'for_filename', 'compatible', 'ccache', 'value', 'evaluated')
 
   def __init__(self,
-      fmt, track, conditional, depth, offset, memory, case_sensitive, magic,
-      for_filename, compatible, ccache):
+      fmt, conditional, depth, offset, case_sensitive, magic, for_filename,
+      compatible, ccache):
     self.fmt = fmt
-    self.track = track
     self.conditional = conditional
     self.depth = depth
     self.offset = offset
-    self.memory = memory
     self.case_sensitive = case_sensitive
     self.magic = magic
     self.for_filename = for_filename
@@ -1443,11 +1552,11 @@ class LazyExpression:
     self.value = None
     self.evaluated = False
 
-  def eval(self):
+  def __call__(self):
     if not self.evaluated:
       self.value = _eval(
-          self.fmt, self.track, _interpreter_vtable, self.conditional,
-          self.depth, self.offset, self.memory)
+          self.fmt, _interpreter_vtable, self.conditional, self.depth,
+          self.offset)
       self.evaluated = True
     return self.value
 
@@ -1456,74 +1565,6 @@ class LazyExpression:
 
   def __repr__(self):
     return "lazy(%s)" % repr(self.fmt)
-
-
-class CurriedCompilation(object):
-  __slots__ = 'lazycomp', 'track', 'lazyvalue'
-
-  def __init__(self, lazycomp, track):
-    self.lazycomp = lazycomp
-    self.track = track
-    self.lazyvalue = None
-
-  def eval(self):
-    if self.lazyvalue is None:
-      self.lazyvalue = self.lazycomp(self.track)
-    return self.lazyvalue
-
-  @property
-  def value(self):
-    return self.eval()[0].value
-
-  @property
-  def truth(self):
-    return self.eval()[0].truth
-
-  @property
-  def eval_count(self):
-    return self.eval()[1]
-
-  def __repr__(self):
-    return 'curriedcomp(%s)' % repr(self.lazycomp)
-
-
-class LazyCompilation(object):
-  __slots__ = (
-      'current', 'conditional', 'depth', 'offset', 'memory', 'case_sensitive',
-      'magic', 'for_filename', 'compatible', 'ccache', 'codeblock')
-
-  def __init__(
-      self, expression, conditional, depth, offset, memory, case_sensitive,
-      magic, for_filename, compatible, ccache):
-    self.current = expression
-    self.conditional = conditional
-    self.depth = depth
-    self.offset = offset
-    self.memory = memory
-    self.magic = magic
-    self.for_filename = for_filename
-    self.compatible = compatible
-    self.ccache = ccache
-    self.codeblock = None
-
-  def curry(self, track):
-    return CurriedCompilation(self, track)
-
-  def eval(self, track):
-    if self.codeblock is None:
-      self.codeblock = _eval(
-          self.current, None, _compiler_vtable, self.conditional, self.depth,
-          self.offset, self.memory)
-    return self.codeblock(track)
-
-  def __call__(self, track):
-    return self.eval(track)
-
-  def __str__(self):
-    return self.current
-
-  def __repr__(self):
-    return 'lazycomp(cb=%s, %s)' % (repr(self.codeblock), repr(self.current))
 
 
 class TitleformatError(Exception):
@@ -1538,6 +1579,7 @@ def backwards_error(right, left_expected, offset, i):
   message = "Encountered '%s' with no matching '%s'" % (right, left_expected)
   message += " at position %s" % (offset + i)
   return message
+
 
 def unterminated_error(token, expected, offset, i):
   message = "Unterminated %s; " % token
@@ -1566,13 +1608,13 @@ next_cond_token = re.compile(r"['\[\]]")
 
 def flush_output(output, compiled):
   joined_output = ''.join(output)
-  compiled.append(lambda t: (joined_output, 0))
+  compiled.append(lambda: (joined_output, 0))
   output.clear()
 
 
 def parse_literal(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart,
-    memory, case_sensitive, magic, for_filename, compatible, ccache):
+    fmt, i, evals, output, compiled, depth, offset, offstart,
+    case_sensitive, magic, for_filename, compatible, ccache):
   start = i
   i = fmt.index("'", i) + 1
   output.append(fmt[start:i-1])
@@ -1580,92 +1622,82 @@ def parse_literal(
 
 
 def interpret_var(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart,
-    memory, case_sensitive, magic, for_filename, compatible, ccache):
+    fmt, i, evals, output, compiled, depth, offset, offstart,
+    case_sensitive, magic, for_filename, compatible, ccache):
   start = i
   i = fmt.index('%', i)
 
-  val, edelta = resolve_var(
-      track, fmt[start:i], depth, case_sensitive, magic, for_filename)
+  val, edelta = resolve_var(fmt[start:i], case_sensitive, magic, for_filename)
 
   output.append(val)
   return i + 1, offset, offstart, evals + edelta
 
 
 def compile_var(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart,
-    memory, case_sensitive, magic, for_filename, compatible, ccache):
+    fmt, i, evals, output, compiled, depth, offset, offstart,
+    case_sensitive, magic, for_filename, compatible, ccache):
   if output:
     flush_output(output, compiled)
 
   start = i
   i = fmt.index('%', i)
+  current = current=fmt[start:i]
 
   compiled.append(
-      lambda t, current=fmt[start:i]:
-        resolve_var(
-            t, current, depth, case_sensitive, magic, for_filename))
+      lambda: resolve_var(current, case_sensitive, magic, for_filename))
 
   return i + 1, offset, offstart, None
 
 
 def interpret_func(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, evals, output, compiled, depth, offset, offstart,
     case_sensitive, magic, for_filename, compatible, ccache):
   return construe_func(
-    fmt, i, track, evals, output, depth, offset, offstart, memory,
-    case_sensitive, magic, for_filename, compatible, ccache,
-    interpret_arg, interpret_arglist)
+    fmt, i, evals, output, depth, offset, offstart, case_sensitive, magic,
+    for_filename, compatible, ccache, interpret_arg, interpret_arglist)
 
 
 def compile_func(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, evals, output, compiled, depth, offset, offstart,
     case_sensitive, magic, for_filename, compatible, ccache):
   if output:
     flush_output(output, compiled)
   return construe_func(
-    fmt, i, track, evals, compiled, depth, offset, offstart, memory,
-    case_sensitive, magic, for_filename, compatible, ccache,
-    compile_arg, compile_arglist)
+    fmt, i, evals, compiled, depth, offset, offstart, case_sensitive, magic,
+    for_filename, compatible, ccache, compile_arg, compile_arglist)
 
 
 def interpret_arg(
-    fmt, track, arglist, depth, offset, memory, case_sensitive, magic,
-    for_filename, compatible, ccache):
+    fmt, arglist, depth, offset, case_sensitive, magic, for_filename,
+    compatible, ccache):
   arglist.append(
       LazyExpression(
-          fmt, track, False, depth, offset, memory,
-          case_sensitive, magic, for_filename, compatible, ccache))
+          fmt, False, depth, offset, case_sensitive, magic, for_filename,
+          compatible, ccache))
 
 
 def compile_arg(
-    fmt, track, arglist, depth, offset, memory, case_sensitive, magic,
-    for_filename, compatible, ccache):
-  arglist.append(
-      LazyCompilation(
-          fmt, False, depth, offset, memory,
-          case_sensitive, magic, for_filename, compatible, ccache))
+    fmt, arglist, depth, offset, case_sensitive, magic, for_filename,
+    compatible, ccache):
+  arglist.append(_eval(fmt, _compiler_vtable, depth=depth, offset=offset,
+    case_sensitive=case_sensitive, magic=magic, for_filename=for_filename,
+    compatible=compatible, ccache=ccache))
 
 
-def interpret_arglist(
-    track, evals, current_fn, arglist, output, depth, offset, memory):
-  val, edelta = invoke_function(
-      track, current_fn, arglist, depth, offset, memory)
+def interpret_arglist(evals, current_fn, arglist, output, depth, offset):
+  val, edelta = vcallmarshal(vinvoke(current_fn, arglist))
   if val:
     output.append(val)
   return evals + edelta
 
 
-def compile_arglist(
-    track, evals, current_fn, arglist, compiled, depth, offset, memory):
-  compiled.append(
-      compile_fn_call(current_fn, arglist, depth, offset))
+def compile_arglist(evals, current_fn, arglist, compiled, depth, offset):
+  compiled.append(compile_fn_call(current_fn, arglist))
 
 
 def construe_func(
-    fmt, i, track, evals, container, depth, offset, offstart, memory,
-    case_sensitive, magic, for_filename, compatible, ccache,
-    do_arg, do_arglist):
+    fmt, i, evals, container, depth, offset, offstart, case_sensitive, magic,
+    for_filename, compatible, ccache, do_arg, do_arglist):
   argparens, innerparens = 0, 0
   foffstart = i + 1
   start = i
@@ -1693,16 +1725,15 @@ def construe_func(
     if not argparens:
       if c == ')':
         if current or arglist:
-          do_arg(''.join(current), track, arglist, depth + 1, offset + offstart,
-              memory, case_sensitive, magic, for_filename, compatible, ccache)
+          do_arg(''.join(current), arglist, depth + 1, offset + offstart,
+              case_sensitive, magic, for_filename, compatible, ccache)
 
         return i, offset, offstart, do_arglist(
-            track, evals, current_fn, arglist, container, depth,
-            offset + foffstart, memory)
+            evals, current_fn, arglist, container, depth, offset + foffstart)
         break
       elif c == ',':
-        do_arg(''.join(current), track, arglist, depth + 1, offset + offstart,
-            memory, case_sensitive, magic, for_filename, compatible, ccache)
+        do_arg(''.join(current), arglist, depth + 1, offset + offstart,
+            case_sensitive, magic, for_filename, compatible, ccache)
         current.clear()
         offstart = i + 1
         continue
@@ -1766,29 +1797,25 @@ def construe_func(
 
 
 def interpret_cond(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, evals, output, compiled, depth, offset, offstart,
     case_sensitive, magic, for_filename, compatible, ccache):
   return construe_cond(
-    fmt, i, track, evals, output, depth, offset, offstart, memory,
-    case_sensitive, magic, for_filename, compatible, ccache,
-    interpret_cond_contents)
+    fmt, i, evals, output, depth, offset, offstart, case_sensitive, magic,
+    for_filename, compatible, ccache, interpret_cond_contents)
 
 
 def compile_cond(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, evals, output, compiled, depth, offset, offstart,
     case_sensitive, magic, for_filename, compatible, ccache):
   if output:
     flush_output(output, compiled)
   return construe_cond(
-    fmt, i, track, evals, compiled, depth, offset, offstart, memory,
-    case_sensitive, magic, for_filename, compatible, ccache,
-    compile_cond_contents)
+    fmt, i, evals, compiled, depth, offset, offstart, case_sensitive, magic,
+    for_filename, compatible, ccache, compile_cond_contents)
 
 
-def interpret_cond_contents(
-    fmt, track, evals, output, depth, offset, memory):
-  evaluated_value = _eval(
-      fmt, track, _interpreter_vtable, True, depth, offset, memory)
+def interpret_cond_contents(fmt, evals, output, depth, offset):
+  evaluated_value = _eval(fmt, _interpreter_vtable, True, depth, offset)
 
   if evaluated_value:
     output.append(str(evaluated_value))
@@ -1796,17 +1823,14 @@ def interpret_cond_contents(
   return evals
 
 
-def compile_cond_contents(
-    fmt, track, evals, compiled, depth, offset, memory):
-  compiled_cond = _eval(
-      fmt, None, _compiler_vtable, True, depth, offset, memory)
-  compiled.append(lambda t: vcondmarshal(compiled_cond(t)))
+def compile_cond_contents(fmt, evals, compiled, depth, offset):
+  compiled_cond = _eval(fmt, _compiler_vtable, True, depth, offset)
+  compiled.append(lambda: vcondmarshal(compiled_cond()))
 
 
 def construe_cond(
-    fmt, i, track, evals, container, depth, offset, offstart, memory,
-    case_sensitive, magic, for_filename, compatible, ccache,
-    do_cond_contents):
+    fmt, i, evals, container, depth, offset, offstart, case_sensitive, magic,
+    for_filename, compatible, ccache, do_cond_contents):
   conds = 0
   start = i
   while True:
@@ -1819,7 +1843,7 @@ def construe_cond(
         conds -= 1
       else:
         return i, offset, offstart, do_cond_contents(
-            fmt[start:i-1], track, evals, container, depth + 1, offset, memory)
+            fmt[start:i-1], evals, container, depth + 1, offset)
     elif c == "'":
       i = fmt.index("'", i) + 1
     else:
@@ -1828,7 +1852,7 @@ def construe_cond(
 
 
 def misplaced_cond(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, evals, output, compiled, depth, offset, offstart,
     case_sensitive, magic, for_filename, compatible, ccache):
   if compatible:
     raise StopIteration()
@@ -1837,7 +1861,7 @@ def misplaced_cond(
 
 
 def misplaced_paren(
-    fmt, i, track, evals, output, compiled, depth, offset, offstart, memory,
+    fmt, i, evals, output, compiled, depth, offset, offstart,
     case_sensitive, magic, for_filename, compatible, ccache):
   # This seems like a foobar bug; parens shouldn't do anything outside of a
   # function call, but foobar will just explode if it sees a lone paren floating
@@ -1867,19 +1891,27 @@ _compiler_vtable = {
 }
 
 
-def format(fmt, track=None):
-  return _eval(fmt, track, _interpreter_vtable)
+def format(fmt, track=None, memory=None):
+  with tfcontext(track, memory):
+    return _eval(fmt, _interpreter_vtable)
 
 
 def compile(fmt):
-  return _eval(fmt, None, _compiler_vtable)
+  return (lambda track=None, memory=None:
+      enact_cascade(_eval(fmt, _compiler_vtable), track, memory))
 
 
-def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
+def enact_cascade(cobj, track, memory):
+  with tfcontext(track, memory):
+    return cobj()
+
+
+def _eval(fmt, vtable, conditional=False, depth=0, offset=0,
     case_sensitive=False, magic=True, for_filename=False, compatible=True,
     ccache=default_ccache):
   if fmt in ccache:
-    return ccache[fmt] if vtable is _compiler_vtable else ccache[fmt](track)
+    if vtable is _compiler_vtable: return ccache[fmt]
+    else: return ccache[fmt]()
 
   evals, i, soff, offstart = 0, 0, -1, 0
   output = []
@@ -1895,8 +1927,8 @@ def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
           i += 1  # Fall through
         else:
           i, offset, offstart, evals = vtable[c](
-              fmt, i, track, evals, output, compiled, depth, offset, offstart,
-              memory, case_sensitive, magic, for_filename, compatible, ccache)
+              fmt, i, evals, output, compiled, depth, offset, offstart,
+              case_sensitive, magic, for_filename, compatible, ccache)
           continue
 
       match = next_token.search(fmt, i + soff)
@@ -1919,8 +1951,8 @@ def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
   if vtable is _compiler_vtable:
     if output:
       # We need to flush the output buffer to a lambda once more
-      compiled.append(lambda t, output=''.join(output): (output, 0))
-    ccache[fmt] = lambda t: run_compiled(compiled, t)
+      compiled.append(lambda output=''.join(output): (output, 0))
+    ccache[fmt] = lambda: run_compiled(compiled)
     return ccache[fmt]
 
   output = ''.join(output)
@@ -1933,49 +1965,55 @@ def _eval(fmt, track, vtable, conditional=False, depth=0, offset=0, memory={},
   return result
 
 
-def run_compiled(compiled, track):
+def run_compiled(compiled: Callable[..., Tuple[str, int]]) -> EvaluatorAtom:
   output = []
   eval_count = 0
 
   for c in compiled:
-    c_output, c_count = c(track)
+    c_output, c_count = c()
     output.append(c_output)
     eval_count += c_count
 
   return EvaluatorAtom(''.join(output), eval_count != 0)
 
 
-def resolve_var(track, field, depth, case_sensitive, magic, for_filename):
-  if track is None:
-    return ('', 0)
+def resolve_var(field, case_sensitive, magic, for_filename):
+  try:
+    track = _ctx_track.get()
 
-  if not case_sensitive:
-    field = field.upper()
+    if track is None:
+      return ('', 0)
 
-  resolved = None
+    if not case_sensitive:
+      field = field.upper()
 
-  if not magic:
-    resolved = track.get(field)
-  else:
-    resolved = resolve_magic_var(track, field, depth, case_sensitive)
-
-  if resolved:
-    if for_filename:
-      resolved = re.sub('[\\\\/:|]', '-', resolved)
-    resolved = EvaluatorAtom(resolved, True)
-  elif resolved is False:
     resolved = None
 
-  return ((str(resolved) if resolved is not True else '', 1)
-          if resolved or resolved == ''
-          # This is the case where no evaluation happened but there is still a
-          # string value (that won't output conditionally).
-          else (str(resolved), 0)
-          if resolved is not None and resolved is not False
-          else ('?', 0))
+    if not magic:
+      resolved = track.get(field)
+    else:
+      resolved = resolve_magic_var(track, field, case_sensitive)
+
+    if resolved:
+      if for_filename:
+        resolved = re.sub('[\\\\/:|]', '-', resolved)
+      resolved = EvaluatorAtom(resolved, True)
+    elif resolved is False:
+      resolved = None
+
+    return ((str(resolved) if resolved is not True else '', 1)
+            if resolved or resolved == ''
+            # This is the case where no evaluation happened but there is still a
+            # string value (that won't output conditionally).
+            else (str(resolved), 0)
+            if resolved is not None and resolved is not False
+            else ('?', 0))
+  except Exception as e:
+    raise TitleformatError(
+        f'Unexpected error while resolving variable "{field}".') from e
 
 
-def resolve_magic_var(track, field, depth, case_sensitive):
+def resolve_magic_var(track, field, case_sensitive):
   field_lower = field.lower()
   if field_lower in magic_mappings:
     mapping = magic_mappings[field_lower]
@@ -1994,18 +2032,7 @@ def resolve_magic_var(track, field, depth, case_sensitive):
   return track.get(field)
 
 
-def compile_fn_call(current_fn, current_argv, depth, offset):
-  fn = vlookup(current_fn, len(current_argv))
-  return (lambda t, fn=fn, argv=current_argv:
-    vcallmarshal(vmarshal(
-      fn(*[x.curry(t) if hasattr(x, 'curry') else x for x in argv],
-        track=t, memory={}))))
-
-
-def invoke_function(
-    track, function_name, function_argv, depth, offset, memory):
-  curried_argv = [
-      x.curry(track) if hasattr(x, 'curry') else x
-      for x in function_argv]
-  return vcallmarshal(vinvoke(track, function_name, curried_argv, memory))
+def compile_fn_call(current_fn, argv):
+  fn = vlookup(current_fn, len(argv))
+  return lambda: vcallmarshal(vmarshal(fn(*argv)))
 
