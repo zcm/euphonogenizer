@@ -828,8 +828,12 @@ def foo_len(a):
   a.value = len(a)
   return a
 
+foo_len2 = foo_len
 
-def foo_len2(a):
+# This function is not used anywhere, as since at least Foobar 1.4.2, $len2 does
+# exactly the same thing as $len. This version of the function is implemented
+# according to the HydrogenAudio titleformat documentation.
+def _foo_len2_old(a):
   a = atomize(a)
   length = 0
   str_a = str(a)
@@ -1401,8 +1405,9 @@ foo_function_vtable = {
     'insert': {3: foo_insert, 'n': foo_false},
     'left': {2: foo_left, 'n': foo_false},
     'len': {1: foo_len, 'n': foo_false},
-    'len2': {1: foo_len2},
-    'longer': {2: foo_longer},
+    # NOTE: Since at least 1.4.2, $len and $len2 are equivalent.
+    'len2': {1: foo_len, 'n': foo_false},
+    'longer': {2: foo_longer, 'n': foo_false},
     'lower': {1: foo_lower},
     'longest': {0: foo_false, 1: foo_nop, 'n': foo_longest},
     'num': {2: foo_num},

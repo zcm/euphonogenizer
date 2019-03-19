@@ -972,7 +972,32 @@ test_eval_cases = [
       ('$len(asdf)', '4', False, cs_01),
       ('$len(12345)', '5', False, cs_01),
       ('$len(%title%)', '4', True, cs_01),
+      ('$len(明後日の夢)', '5', False, None),
+      ("$len(my 明後日の夢',')", '9', False, None),
+      ('$len(ZA̡͊͠͝LGΌ ISͮ̂҉̯͈͕̹̘̱ TO͇̹̺ͅƝ̴ȳ̳ TH̘Ë͖́̉ ͠P̯͍̭O̚​N̐Y̡ H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̶̧̨̱̹̭̯ͧ̾ͬC̷̙̲̝͖ͭ̏ͥͮ͟Oͮ͏̮̪̝͍M̲̖͊̒ͪͩͬ̚̚͜Ȇ̴̟̟͙̞ͩ͌͝S̨̥̫͎̭ͯ̿̔̀ͅ)', '137', False, None),
       ('$len(%track%,0)', '', False, cs_01),
+      ('$len2()', '', False, cs_01),
+      ('$len2(a)', '1', False, cs_01),
+      ('$len2(0)', '1', False, cs_01),
+      ('$len2(asdf)', '4', False, cs_01),
+      ('$len2(12345)', '5', False, cs_01),
+      ('$len2(%title%)', '4', True, cs_01),
+      ('$len2(明後日の夢)', '5', False, None),
+      ("$len2(my 明後日の夢',')", '9', False, None),
+      ('$len2(ZA̡͊͠͝LGΌ ISͮ̂҉̯͈͕̹̘̱ TO͇̹̺ͅƝ̴ȳ̳ TH̘Ë͖́̉ ͠P̯͍̭O̚​N̐Y̡ H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̶̧̨̱̹̭̯ͧ̾ͬC̷̙̲̝͖ͭ̏ͥͮ͟Oͮ͏̮̪̝͍M̲̖͊̒ͪͩͬ̚̚͜Ȇ̴̟̟͙̞ͩ͌͝S̨̥̫͎̭ͯ̿̔̀ͅ)', '137', False, None),
+      ('$len2(%track%,0)', '', False, cs_01),
+    ),
+    *_testcasegroup('strings',
+      ('$longer()', '', False, None),
+      ('$longer(yes)', '', False, None),
+      ('$longer(%track%)', '', False, cs_01),
+      ('$longer(yes,)', '', True, None),
+      ('$longer(longer,short)', '', True, None),
+      ("$longer('short',longer)", '', False, None),
+      ('$longer(%track%,long)', '', False, cs_01),
+      ('$longer(short,     )', '', False, None),
+      ('$longer(yes,no,a)', '', False, None),
+      ('$longer(%track%,,)', '', False, cs_01),
     ),
     *_testcasegroup('progress',
       ('$progress()', '', False, None),
@@ -1020,6 +1045,7 @@ test_eval_cases = [
       ('$progress(3,5,3,!,-)', '--!', False, None),
       ('$progress(4,5,3,!,-)', '--!', False, None),
       ('$progress(5,5,3,!,-)', '--!', False, None),
+      ('$progress( , , , , , )', '', False, None),
       ('$progress2()', '', False, None),
       ('$progress2( )', '', False, None),
       ('$progress2( , )', '', False, None),
@@ -1069,6 +1095,7 @@ test_eval_cases = [
       ('$progress2(3,5,3,!,-)', '!!-', False, None),
       ('$progress2(4,5,3,!,-)', '!!-', False, None),
       ('$progress2(5,5,3,!,-)', '!!!', False, None),
+      ('$progress2( , , , , , )', '', False, None),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
@@ -1540,6 +1567,7 @@ def run_tests():
   for e in encoding_tests.keys():
     ttf.test_eval_ansi_encoding(e)
     ttf.test_eval_ascii_encoding(e)
+
 
 if __name__ == '__main__':
   run_tests()
