@@ -3,7 +3,7 @@
 # vim:ts=2:sw=2:et:ai
 
 from functools import reduce
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, List, Tuple, Union
 
 import binascii
 import codecs
@@ -323,6 +323,9 @@ def stringify_noncallable(obj):
   if isinstance(obj, (EvaluatorAtom, str, int)):
     return str(obj)
   return ''
+
+
+TFFunctionValue = Union[str, int, bool, None, EvaluatorAtom]
 
 
 def foo_true(*unused_va):
@@ -1479,34 +1482,24 @@ def vmarshal(value):
   return EvaluatorAtom(value, False)
 
 
-def vlookup(function, arity):
-  try:
-    fn_vector = foo_function_vtable[function]
-    try:
-      return fn_vector[arity]
-    except KeyError:
-      try:
-        return fn_vector['n']
-      except KeyError:
-        raise TitleformatRuntimeError(
-            'The function with name "%s" has no definition for arity %s' % (
-              function, arity))
-  except KeyError:
-    try:
-      fn_vector = foo_function_vtable['(default)']
-      try:
-        return fn_vector[arity]
-      except KeyError:
-        try:
-          return fn_vector['n']
-        except KeyError:
-          raise TitleformatRuntimeError(
-              'Function "' + function + '" is undefined and the default'
-              + ' handler has no definition for arity ' + arity)
-    except KeyError:
-      raise TitleformatRuntimeError(
-          'The function with name "' + function + '" has no definition and no'
-          + ' default handler has been defined')
+def vlookup(fn: str, arity: int) -> Callable[..., TFFunctionValue]:
+  if fn in foo_function_vtable:
+    fn_vector = foo_function_vtable[fn]
+  elif '(default)' in foo_function_vtable:
+    fn_vector = foo_function_vtable['(default)']
+  else:
+    raise TitleformatRuntimeError(
+        f'Function "{fn}" is undefined and no default handler exists.')
+
+  if arity in fn_vector:
+    return fn_vector[arity]
+  elif 'n' in fn_vector:
+    return fn_vector['n']
+  else:
+    raise TitleformatRuntimeError(
+        f'Function "{fn}" undefined for arity {arity}.'
+        if function in foo_function_vtable else
+        f'Default handler undefined for arity {arity} ("{fn}" is undefined).')
 
 
 def vinvoke(function, argv):
