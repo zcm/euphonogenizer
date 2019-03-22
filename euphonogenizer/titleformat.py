@@ -871,13 +871,22 @@ def foo_longest(*a1_aN):
   return longest
 
 
+# A non-compatible version of this would be nice, where it could ignore the
+# Foobar bugs and limits and just do its own thing in a simple way.
 def foo_num(n, length):
   n = atomize(n)
+  int_n = int(n)
+  bugged_sign = int_n <= -9223372036854775808
+  int_n = max(-9223372036854775808, min(9223372036854775807, int_n))
   length = intify(length)
-  if (length > 0):
-    n.value = str(int(n)).zfill(length)
+  length = (min(32, length)
+            if length >= 0 else
+            max(0, min(32, length + 9223372036854775808)))
+  if bugged_sign:
+    ns = str(int_n)
+    n.value = f"-{'0' * (length - len(ns) - 1)}{ns}"
   else:
-    n.value = str(int(n))
+    n.value = str(int_n).zfill(length)
   return n
 
 
@@ -1410,7 +1419,7 @@ foo_function_vtable = {
     'longer': {2: foo_longer, 'n': foo_false},
     'lower': {1: foo_lower},
     'longest': {0: foo_false, 1: foo_nop, 'n': foo_longest},
-    'num': {2: foo_num},
+    'num': {2: foo_num, 'n': foo_false},
     'pad': {2: foo_pad, 3: foo_pad},
     'pad_right': {2: foo_pad_right, 3: foo_pad_right},
     'padcut': {2: foo_padcut},
