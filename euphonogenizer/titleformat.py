@@ -1908,8 +1908,13 @@ def format(fmt, track=None, memory=None):
 
 
 def compile(fmt):
-  return (lambda track=None, memory=None:
-      enact_cascade(_eval(fmt, _compiler_vtable), track, memory))
+  cobj = _eval(fmt, _compiler_vtable)
+  return lambda track=None, memory=None: str(enact_cascade(cobj, track, memory))
+
+
+def compile_atom(fmt):
+  cobj = _eval(fmt, _compiler_vtable)
+  return lambda track=None, memory=None: enact_cascade(cobj, track, memory)
 
 
 def enact_cascade(cobj, track, memory):

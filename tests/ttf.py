@@ -3,7 +3,7 @@
 # vim:ts=2:sw=2:et:ai
 
 from euphonogenizer import titleformat
-from euphonogenizer.titleformat import EvaluatorAtom
+from euphonogenizer.common import unistr
 
 from functools import reduce
 from itertools import product
@@ -33,12 +33,6 @@ fake = {
     "DASH" : "-",
     "DOT" : ".",
     "SLASH" : "/",
-    "TEN" : "10",
-    "TWO" : "02",
-    "BOUNDS" : "9223372036854775807",
-    "OVERFLOW" : "9223372036854775808",
-    "NEGBOUNDS" : "-9223372036854775808",
-    "NEGOVERFLOW" : "-9223372036854775809",
 }
 
 mm_album_artist = {
@@ -98,6 +92,8 @@ window_title_integration_expected = (
 )
 
 test_url = 'www.techtv.com/screensavers/supergeek/story/0,24330,3341900,00.html'
+
+f = titleformat.TitleFormatter()
 
 def _tcid(prefix, testcase):
   suffix = '' if len(testcase) <= 4 or not testcase[4] else ':' + testcase[4]
@@ -187,8 +183,6 @@ test_eval_cases = [
       ("a$invalid')''(')b(", 'a', False, None),
       ("a$invalid(b$invalid($invalid')''('(')'))))",
         'a[UNKNOWN FUNCTION]', False, None),
-      ("$if2(a,b$if2(c,$invalid(')'')'')')))",
-        'b[UNKNOWN FUNCTION]', False, None),
       ("a$add('3", 'a', False, None),
     ),
     *_testcasegroup('parser:functions',
@@ -205,17 +199,6 @@ test_eval_cases = [
       ('*$[a', '*', False, {}),
       ('*$[]a', '*', False, {}),
       ('*$[()]a', '*', False, {}),
-    ),
-    *_testcasegroup('parser:numbers',
-      ("$add(0)", '0', False, {}),
-      ("$add(1)", '1', False, {}),
-      ("$add(False)", '0', False, {}),
-      ("$add(True)", '0', False, {}),
-      ("$add(None)", '0', False, {}),
-      ("$add(,)", '0', False, {}),
-      ("$add('1234')", '1234', False, {}),
-    ),
-    *_testcasegroup('parser:functions_complex',
       ('*()$add(1,2)', '*', False, {}),
       ('*$ad$if($add(),a,d)d(2)', '*', False, {}),
       ('*$if($ad$if($add(),a,d),yes,no)d(2)', '*nod', False, {}),
@@ -241,7 +224,6 @@ test_eval_cases = [
     ),
     # Magic mappings
     *_testcasegroup('variable:magic_mapping',
-      #('%artist%', '', False, None),  # TODO: broken, will fix later
       ('%album artist%-1', 'me-1', True, mm_album_artist),
       ('%album artist%-2', 'me this time-2', True, mm_artist),
       ('%album artist%-3', 'just taking credit-3', True, mm_composer),
@@ -262,12 +244,12 @@ test_eval_cases = [
       ('$div(1%track%,10)', '10', True, cs_01),
     ),
     *_testcasegroup('conditional',
-      ("[']'%artist%'[']", ']Collective Soul[', True, cs_01),
       ('asdf[jkl][qwer%disc%[ty]uiop]%track%[a[b[$add(1,%track%)]c]d]',
         'asdfqwer1uiop01ab2cd', True, cs_01),
     ),
     # Sanity tests, basic non-generated cases that validate generated ones
     *_testcasegroup('sanity:arithmetic',
+      ("$add('1234')", '1234', False, {}),
       ("$add(,,  '    1234    '  ,,)", '1234', False, {}),
       ('$add($div($mul($sub(100,1),2),10),2)', '21', False, {}),
     ),
@@ -698,14 +680,6 @@ test_eval_cases = [
         'Μιὰ Πάπια Μὰ Ποιά Πάπια;', False, {}),
       ('$caps(ΜΙᾺ ΠΆΠΙΑ ΜᾺ ΠΟΙΆ ΠΆΠΙΑ;)',
         'Μιὰ Πάπια Μὰ Ποιά Πάπια;', False, {}),
-      (r"""$caps('aaA ɐɐⱯ`bbB,əəƏ~ccC.ddD/eeE;ffF:ggG''''hhH"kkK[ααΑ]ϟϟϞ')""",
-        r"""Aaa Ɐɐɐ`bbb,Əəə~ccc.ddd/Eee;fff:ggg'hhh"kkk[Ααα]Ϟϟϟ""", False, {}),
-      (r"""$caps('aaA{mmM}nnN|ooO\ááÁ=ppP+qqQ-rrR(ⅶⅶⅦ)ɔɔƆ*ssS&ttT^uuU')""",
-        r"""Aaa{mmm}nnn|Ooo\Ááá=ppp+qqq-rrr(Ⅶⅶⅶ)Ɔɔɔ*sss&ttt^uuu""", False, {}),
-      (r"""$caps('aaA%vvV$wwW#xxX@yyY!zzZ?jjJ　ppP。iiI（jjJ）aaA⸱bbB')""",
-        r"""Aaa%vvv$www#xxx@yyy!zzz?jjj　ppp。iii（jjj）aaa⸱bbb""", False, {}),
-      (r"""$caps('qqQ【ccC】ddD⁽eeE︵ffF༺ggG')""",
-        'Qqq【ccc】ddd⁽eee︵fff༺ggg', False, {}),
       ('$caps(%artist%)', 'Collective Soul', True, cs_01),
       ('$caps(%artist%, b)', '', False, cs_01),
       # $caps2
@@ -725,14 +699,6 @@ test_eval_cases = [
         'Μιὰ Πάπια Μὰ Ποιά Πάπια;', False, {}),
       ('$caps2(ΜΙᾺ ΠΆΠΙΑ ΜᾺ ΠΟΙΆ ΠΆΠΙΑ;)',
         'ΜΙᾺ ΠΆΠΙΑ ΜᾺ ΠΟΙΆ ΠΆΠΙΑ;', False, {}),
-      (r"""$caps2('aaA ɐɐⱯ`bbB,əəƏ~ccC.ddD/eeE;ffF:ggG''''hhH"kkK[ααΑ]ϟϟϞ')""",
-        r"""AaA ⱯɐⱯ`bbB,ƏəƏ~ccC.ddD/EeE;ffF:ggG'hhH"kkK[ΑαΑ]ϞϟϞ""", False, {}),
-      (r"""$caps2('aaA{mmM}nnN|ooO\ááÁ=ppP+qqQ-rrR(ⅶⅶⅦ)ɔɔƆ*ssS&ttT^uuU')""",
-        r"""AaA{mmM}nnN|OoO\ÁáÁ=ppP+qqQ-rrR(ⅦⅶⅦ)ƆɔƆ*ssS&ttT^uuU""", False, {}),
-      (r"""$caps2('aaA%vvV$wwW#xxX@yyY!zzZ?jjJ　ppP。iiI（jjJ）aaA⸱bbB')""",
-        r"""AaA%vvV$wwW#xxX@yyY!zzZ?jjJ　ppP。iiI（jjJ）aaA⸱bbB""", False, {}),
-      (r"""$caps2('qqQ【ccC】ddD⁽eeE︵ffF༺ggG')""",
-        'QqQ【ccC】ddD⁽eeE︵ffF༺ggG', False, {}),
       ('$caps2(%artist%)', 'Collective Soul', True, cs_01),
       ('$caps2(%artist%, b)', '', False, cs_01),
       # $char
@@ -976,180 +942,7 @@ test_eval_cases = [
       ('$len(asdf)', '4', False, cs_01),
       ('$len(12345)', '5', False, cs_01),
       ('$len(%title%)', '4', True, cs_01),
-      ('$len(明後日の夢)', '5', False, None),
-      ("$len(my 明後日の夢',')", '9', False, None),
-      ('$len(ZA̡͊͠͝LGΌ ISͮ̂҉̯͈͕̹̘̱ TO͇̹̺ͅƝ̴ȳ̳ TH̘Ë͖́̉ ͠P̯͍̭O̚​N̐Y̡ H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̶̧̨̱̹̭̯ͧ̾ͬC̷̙̲̝͖ͭ̏ͥͮ͟Oͮ͏̮̪̝͍M̲̖͊̒ͪͩͬ̚̚͜Ȇ̴̟̟͙̞ͩ͌͝S̨̥̫͎̭ͯ̿̔̀ͅ)', '137', False, None),
       ('$len(%track%,0)', '', False, cs_01),
-      ('$len2()', '', False, cs_01),
-      ('$len2(a)', '1', False, cs_01),
-      ('$len2(0)', '1', False, cs_01),
-      ('$len2(asdf)', '4', False, cs_01),
-      ('$len2(12345)', '5', False, cs_01),
-      ('$len2(%title%)', '4', True, cs_01),
-      ('$len2(明後日の夢)', '5', False, None),
-      ("$len2(my 明後日の夢',')", '9', False, None),
-      ('$len2(ZA̡͊͠͝LGΌ ISͮ̂҉̯͈͕̹̘̱ TO͇̹̺ͅƝ̴ȳ̳ TH̘Ë͖́̉ ͠P̯͍̭O̚​N̐Y̡ H̸̡̪̯ͨ͊̽̅̾̎Ȩ̬̩̾͛ͪ̈́̀́͘ ̶̧̨̱̹̭̯ͧ̾ͬC̷̙̲̝͖ͭ̏ͥͮ͟Oͮ͏̮̪̝͍M̲̖͊̒ͪͩͬ̚̚͜Ȇ̴̟̟͙̞ͩ͌͝S̨̥̫͎̭ͯ̿̔̀ͅ)', '137', False, None),
-      ('$len2(%track%,0)', '', False, cs_01),
-    ),
-    *_testcasegroup('strings',
-      ('$longer()', '', False, None),
-      ('$longer(yes)', '', False, None),
-      ('$longer(%track%)', '', False, cs_01),
-      ('$longer(yes,)', '', True, None),
-      ('$longer(longer,short)', '', True, None),
-      ("$longer('short',longer)", '', False, None),
-      ('$longer(%track%,long)', '', False, cs_01),
-      ('$longer(short,     )', '', False, None),
-      ('$longer(yes,no,a)', '', False, None),
-      ('$longer(%track%,,)', '', False, cs_01),
-    ),
-    *_testcasegroup('strings',
-      ('$num()', '', False, None),
-      ('$num(1)', '', False, None),
-      ('$num(%track%)', '', False, cs_01),
-      ('$num(,)', '0', False, None),
-      ('$num(,3)', '000', False, None),
-      ('$num(,31)', '0000000000000000000000000000000', False, None),
-      ('$num(,32)', '00000000000000000000000000000000', False, None),
-      ('$num(,33)', '00000000000000000000000000000000', False, None),
-      ('$num(,-1)', '00000000000000000000000000000000', False, None),
-      ('$num(,-2)', '00000000000000000000000000000000', False, None),
-      # Yep, Foobar overflows a long long int here.
-      ('$num(,-9223372036854775808)', '0', False, None),
-      ('$num(,-9223372036854775807)', '0', False, None),
-      ('$num(,-9223372036854775806)', '00', False, None),
-      ('$num(,-9223372036854775805)', '000', False, None),
-      ('$num(,-9223372036854775775)',
-        '00000000000000000000000000000000', False, None),
-      ('$num(,-9223372036854775776)',
-        '00000000000000000000000000000000', False, None),
-      ('$num(,-9223372036854775777)',
-        '0000000000000000000000000000000', False, None),
-      ('$num(,-9223372036854775778)',
-        '000000000000000000000000000000', False, None),
-      ('$num(9223372036854775806,)', '9223372036854775806', False, None),
-      ('$num(9223372036854775807,)', '9223372036854775807', False, None),
-      ('$num(9223372036854775808,)', '9223372036854775807', False, None),
-      ('$num(-9223372036854775807,)', '-9223372036854775807', False, None),
-      # NOTE: This is *clearly* a Foobar bug. The inner dash is wrong.
-      ('$num(-9223372036854775808,)', '--9223372036854775808', False, None),
-      ('$num(-9223372036854775809,)', '--9223372036854775808', False, None),
-      ('$num(-9223372036854775808,21)', '--9223372036854775808', False, None),
-      ('$num(-9223372036854775808,22)', '-0-9223372036854775808', False, None),
-      ('$num(-9223372036854775808,32)',
-        '-00000000000-9223372036854775808', False, None),
-      # You can't just cheat and return static values.
-      ('$num(%BOUNDS%,)', '9223372036854775807', True, fake),
-      ('$num(%OVERFLOW%,)', '9223372036854775807', True, fake),
-      ('$num(%NEGBOUNDS%,)', '--9223372036854775808', True, fake),
-      ('$num(%NEGOVERFLOW%,)', '--9223372036854775808', True, fake),
-      ('$num(%track%,5)', '00001', True, cs_01),
-      ('$num(-%track%,5)', '-0001', True, cs_01),
-      ('$num(5,%totaltracks%)', '00000000005', False, cs_01),
-      ('$num(12345,5)', '12345', False, None),
-      ('$num(123,5)', '00123', False, None),
-      ('$num(-123,5)', '-0123', False, None),
-      ('$num(4.8,5)', '00004', False, None),
-      ('$num(A1,5)', '00000', False, None),
-      ('$num(123,123,)', '', False, None),
-    ),
-    *_testcasegroup('progress',
-      ('$progress()', '', False, None),
-      ('$progress( )', '', False, None),
-      ('$progress( , )', '', False, None),
-      ('$progress( , , )', '', False, None),
-      ('$progress( , , , )', '', False, None),
-      ('$progress( , , , , )', ' ', False, None),
-      ('$progress(0,0,0,#,=)', '#', False, None),
-      ('$progress(0,10,10,#,=)', '#=========', False, None),
-      ('$progress(1,10,10,#,=)', '=#========', False, None),
-      ('$progress(%track%,11,11,#,=)', '=#=========', False, cs_01),
-      ('$progress(01,%totaltracks%,11,#,=)', '=#=========', False, cs_01),
-      ('$progress(%track%,%totaltracks%,11,#,=)', '=#=========', True, cs_01),
-      ('$progress(%track%,11,%totaltracks%,#,=)', '=#=========', False, cs_01),
-      ('$progress(01,%ten%,%ten%,#,=)', '=#========', False, fake),
-      ('$progress(%two%,%ten%,%ten%,#,=)', '==#=======', True, fake),
-      ('$progress(02,10,10,%dash%,%dot%)', '..-.......', False, fake),
-      ('$progress(02,10,%ten%,%dash%,%dot%)', '..-.......', False, fake),
-      ('$progress(02,%ten%,%ten%,%dash%,%dot%)', '..-.......', False, fake),
-      ('$progress(%two%,10,%ten%,%dash%,%dot%)', '..-.......', False, fake),
-      ('$progress(%two%,%ten%,%ten%,%dash%,%dot%)', '..-.......', True, fake),
-      ('$progress(-1,3,10,!,-)', '!---------', False, None),
-      ('$progress( 0,3,10,!,-)', '!---------', False, None),
-      ('$progress( 1,3,10,!,-)', '---!------', False, None),
-      ('$progress( 2,3,10,!,-)', '-------!--', False, None),
-      ('$progress( 3,3,10,!,-)', '---------!', False, None),
-      ('$progress( 4,3,10,!,-)', '---------!', False, None),
-      ('$progress( 0,0,10,!,-)', '!---------', False, None),
-      ('$progress( 1,0,10,!,-)', '---------!', False, None),
-      ('$progress(0,-5,10,!,-)', '!---------', False, None),
-      ('$progress(1,-5,10,!,-)', '---------!', False, None),
-      ('$progress(-1,-5,10,!,-)', '!---------', False, None),
-      ('$progress(0,5,0,!,-)', '!', False, None),
-      ('$progress(0,5,1,!,-)', '!', False, None),
-      ('$progress(1,5,1,!,-)', '!', False, None),
-      ('$progress(0,5,2,!,-)', '!-', False, None),
-      ('$progress(1,5,2,!,-)', '!-', False, None),
-      ('$progress(2,5,2,!,-)', '-!', False, None),
-      ('$progress(3,5,2,!,-)', '-!', False, None),
-      ('$progress(5,5,2,!,-)', '-!', False, None),
-      ('$progress(0,5,3,!,-)', '!--', False, None),
-      ('$progress(1,5,3,!,-)', '-!-', False, None),
-      ('$progress(2,5,3,!,-)', '-!-', False, None),
-      ('$progress(3,5,3,!,-)', '--!', False, None),
-      ('$progress(4,5,3,!,-)', '--!', False, None),
-      ('$progress(5,5,3,!,-)', '--!', False, None),
-      ('$progress( , , , , , )', '', False, None),
-      ('$progress2()', '', False, None),
-      ('$progress2( )', '', False, None),
-      ('$progress2( , )', '', False, None),
-      ('$progress2( , , )', '', False, None),
-      ('$progress2( , , , )', '', False, None),
-      ('$progress2( , , , , )', ' ', False, None),
-      ('$progress2(0,0,0,#,=)', '=', False, None),
-      ('$progress2(0,10,10,#,=)', '==========', False, None),
-      ('$progress2(1,10,10,#,=)', '#=========', False, None),
-      ('$progress2(%track%,11,11,#,=)', '#==========', False, cs_01),
-      ('$progress2(01,%totaltracks%,11,#,=)', '#==========', False, cs_01),
-      ('$progress2(%track%,%totaltracks%,11,#,=)', '#==========', True, cs_01),
-      ('$progress2(%track%,11,%totaltracks%,#,=)', '#==========', False, cs_01),
-      ('$progress2(01,%ten%,%ten%,#,=)', '#=========', False, fake),
-      ('$progress2(%two%,%ten%,%ten%,#,=)', '##========', True, fake),
-      ('$progress2(02,10,10,%dash%,%dot%)', '--........', False, fake),
-      ('$progress2(02,10,%ten%,%dash%,%dot%)', '--........', False, fake),
-      ('$progress2(02,%ten%,%ten%,%dash%,%dot%)', '--........', False, fake),
-      ('$progress2(%two%,10,%ten%,%dash%,%dot%)', '--........', False, fake),
-      ('$progress2(%two%,%ten%,%ten%,%dash%,%dot%)', '--........', True, fake),
-      ('$progress2(-1,3,10,!,-)', '----------', False, None),
-      ('$progress2( 0,3,10,!,-)', '----------', False, None),
-      ('$progress2( 1,3,10,!,-)', '!!!-------', False, None),
-      ('$progress2( 2,3,10,!,-)', '!!!!!!!---', False, None),
-      ('$progress2( 3,3,10,!,-)', '!!!!!!!!!!', False, None),
-      ('$progress2( 4,3,10,!,-)', '!!!!!!!!!!', False, None),
-      ('$progress2( 0,0,10,!,-)', '----------', False, None),
-      ('$progress2( 1,0,10,!,-)', '!!!!!!!!!!', False, None),
-      ('$progress2(0,-5,10,!,-)', '----------', False, None),
-      ('$progress2(1,-5,10,!,-)', '!!!!!!!!!!', False, None),
-      ('$progress2(-1,-5,10,!,-)', '----------', False, None),
-      ('$progress2(0,5,0,!,-)', '-', False, None),
-      ('$progress2(0,5,1,!,-)', '-', False, None),
-      ('$progress2(1,5,1,!,-)', '-', False, None),
-      ('$progress2(2,5,1,!,-)', '-', False, None),
-      ('$progress2(3,5,1,!,-)', '!', False, None),
-      ('$progress2(5,5,1,!,-)', '!', False, None),
-      ('$progress2(0,5,2,!,-)', '--', False, None),
-      ('$progress2(1,5,2,!,-)', '--', False, None),
-      ('$progress2(2,5,2,!,-)', '!-', False, None),
-      ('$progress2(3,5,2,!,-)', '!-', False, None),
-      ('$progress2(4,5,2,!,-)', '!!', False, None),
-      ('$progress2(5,5,2,!,-)', '!!', False, None),
-      ('$progress2(0,5,3,!,-)', '---', False, None),
-      ('$progress2(1,5,3,!,-)', '!--', False, None),
-      ('$progress2(2,5,3,!,-)', '!--', False, None),
-      ('$progress2(3,5,3,!,-)', '!!-', False, None),
-      ('$progress2(4,5,3,!,-)', '!!-', False, None),
-      ('$progress2(5,5,3,!,-)', '!!!', False, None),
-      ('$progress2( , , , , , )', '', False, None),
     ),
     # Real-world use-cases; integration tests
     pytest.param(
@@ -1234,9 +1027,9 @@ def generate_tests():
       fmt = '$%s(%s)' % (fn, testarg)
 
       if group == 'arithmetic':
-        expected = str(resolve_int_var(testarg, cs_01))
+        expected = unistr(resolve_int_var(testarg, cs_01))
         try:
-          expected = str(int(expected))
+          expected = unistr(int(expected))
         except ValueError:
           expected = '0'
       elif group == 'boolean':
@@ -1258,7 +1051,7 @@ def generate_tests():
       if testarg[0] == '%' and group == 'arithmetic':
         # Attempts to negate a variable resolution actually work somehow!
         fmt = '$%s(-%s)' % (fn, testarg)
-        expected = str(int(expected) * -1)
+        expected = unistr(int(expected) * -1)
         generated_cases.append(pytest.param(
             fmt, expected, testarg_stripped in cs_01, cs_01,
             id="%s:arity1<%s = '%s'>" % (group, fmt, expected)))
@@ -1283,13 +1076,13 @@ def generate_tests():
       # First check the literal parser and how it handles numbers
       if fn != 'not': # Skip this check for not
         if type(t1) is int or type(t1) is not int and '%' not in t1:
-          s1 = str(t1)
+          s1 = unistr(t1)
           literal_s1 = "'" + s1 + "'"
           a1 = t1 if type(t1) is int else resolve_int_var(t1, cs_01)
           a2 = t2 if type(t2) is int else resolve_int_var(t2, cs_01)
           fmt = '$%s(%s,%s)' % (fn, literal_s1, t2)
-          expected = '' if group == 'boolean' else str(answer(a1, a2))
-          expected_truth = False if fn == 'and' else '%' in str(t2)
+          expected = '' if group == 'boolean' else unistr(answer(a1, a2))
+          expected_truth = False if fn == 'and' else '%' in unistr(t2)
           generated_cases.append(pytest.param(
             fmt, expected, expected_truth, cs_01,
             id="%s:arity2literal<'%s' = '%s'>" % (group, fmt, expected)))
@@ -1324,7 +1117,7 @@ def generate_tests():
         val2 = resolve_int_var(t2s, cs_01, stripped=True)
 
         if group == 'arithmetic':
-          expected = str(answer(val1, val2))
+          expected = unistr(answer(val1, val2))
           expected_truth = (
               t1s.strip(stripchars) in cs_01
               or t2s.strip(stripchars) in cs_01)
@@ -1380,11 +1173,11 @@ def generate_tests():
         ('  -1!a', '-1- ', ' -2 -9-  ', '-3a bc  '),
         ('  -1!a', '-1- ', ' -2 -9-  ', '-3a bc  ', '10-')
     ):
-      fmt = '$%s(%s)' % (fn, ','.join(map(str, t)))
+      fmt = '$%s(%s)' % (fn, ','.join(map(unistr, t)))
       ts = [x for x in
             map(lambda x:
                 x.lstrip('% ').replace('2 -9-', '2').rstrip(stripchars),
-              map(str, t))]
+              map(unistr, t))]
       vals = [resolve_int_var(x, cs_01, stripped=True) for x in ts]
 
       if group == 'boolean':
@@ -1393,7 +1186,7 @@ def generate_tests():
         expected = answer(vals[0], vals[1])
         for x in vals[2:]:
           expected = answer(expected, x)
-        expected = str(expected)
+        expected = unistr(expected)
 
       if group == 'boolean':
         try:
@@ -1459,7 +1252,7 @@ for fn in ('min', 'max'):
         lambda x: len([e2 for e2 in filter((
           lambda y: '%' in y), x)]) > 0), case[0])]) > 0:
       negated = ['-' + x for x in case[0]]
-      expected = str(-int(max_expected if fn == 'min' else min_expected))
+      expected = unistr(-int(max_expected if fn == 'min' else min_expected))
       fmt = '$%s(%s)' % (fn, ','.join(negated))
       test_eval_cases.append(pytest.param(
         fmt, expected, expected_truth, cs_01,
@@ -1524,62 +1317,7 @@ encoding_tests = {
 }
 
 
-atoms = [
-    False, True, None, '', 'nonempty',
-    EvaluatorAtom(None),
-    EvaluatorAtom(None, True),
-    EvaluatorAtom(''),
-    EvaluatorAtom('', True),
-    EvaluatorAtom('nonempty'),
-    EvaluatorAtom('nonempty', True),
-    EvaluatorAtom(0),
-    EvaluatorAtom(0, True),
-    EvaluatorAtom(123),
-    EvaluatorAtom(123, True),
-]
-
-atoms = [*atoms, *map(lambda x: lambda: x, atoms)]
-
-bool_atoms = [*zip(atoms, [
-    False, True, False, False, False,
-    False, True, False, True, False, True, False, True, False, True,
-  ] * 2)]
-
-str_atoms = [*zip(atoms, [
-    EvaluatorAtom(None, False),
-    EvaluatorAtom(None, True),
-    EvaluatorAtom(None, False),
-    EvaluatorAtom('', False),
-    EvaluatorAtom('nonempty', False),
-    EvaluatorAtom(None, False),
-    EvaluatorAtom(None, True),
-    EvaluatorAtom('', False),
-    EvaluatorAtom('', True),
-    EvaluatorAtom('nonempty', False),
-    EvaluatorAtom('nonempty', True),
-    EvaluatorAtom(0, False),
-    EvaluatorAtom(0, True),
-    EvaluatorAtom(123, False),
-    EvaluatorAtom(123, True),
-  ] * 2)]
-
-
-@pytest.mark.api
-class TestTitleformat_APITests:
-  @pytest.mark.parametrize('cond,atomized_cond', bool_atoms)
-  @pytest.mark.parametrize('then_case,atomized_then_case', str_atoms)
-  def test_foo_if__2(self, cond, atomized_cond, then_case, atomized_then_case):
-    if callable(cond): print(f'cond = lambda -> {repr(cond())}')
-    else: print(f'cond = {repr(cond)}')
-    if callable(then_case): print(f'then = lambda -> {repr(then_case)}')
-    else: print(f'then = {repr(then_case)}')
-
-    result_atom = titleformat.foo_if__2(cond, then_case)
-    assert result_atom == (atomized_then_case if atomized_cond else None)
-
-
-@pytest.mark.known
-class TestTitleformat_KnownValues:
+class TestTitleFormatter:
   @pytest.mark.parametrize('compiled', [
     pytest.param(False, id='interpreted'),
     pytest.param(True, id='compiled'),
@@ -1587,41 +1325,38 @@ class TestTitleformat_KnownValues:
   @pytest.mark.parametrize('fmt,expected,expected_truth,track', test_eval_cases)
   def test_eval(self, fmt, expected, expected_truth, track, compiled):
     if compiled:
-      result = titleformat.compile_atom(fmt)(track)
+      fn = f.eval(None, fmt, compiling=True)
+      result = fn(track)
     else:
-      result = titleformat.format(fmt, track)
+      result = f.eval(track, fmt)
 
-    assert result.value == expected
-    assert result.truth is expected_truth
+    assert result.string_value == expected
+    assert result.truth_value is expected_truth
 
   @pytest.mark.parametrize('block', encoding_tests.keys())
   def test_eval_ansi_encoding(self, block):
     unicode_input, expected_ansi, _ = encoding_tests[block]
 
-    result_ansi = titleformat.format(f"$ansi('{unicode_input}')", None)
+    result_ansi = f.eval(None, "$ansi('%s')" % unicode_input)
 
-    assert result_ansi.value == expected_ansi
-    assert not result_ansi.truth
+    assert result_ansi.string_value == expected_ansi
+    assert not result_ansi.truth_value
 
   @pytest.mark.parametrize('block', encoding_tests.keys())
   def test_eval_ascii_encoding(self, block):
     unicode_input, _, expected_ascii = encoding_tests[block]
 
-    result_ascii= titleformat.format(f"$ascii('{unicode_input}')", None)
+    result_ascii = f.eval(None, "$ascii('%s')" % unicode_input)
 
-    assert result_ascii.value == expected_ascii
-    assert not result_ascii.truth
+    assert result_ascii.string_value == expected_ascii
+    assert not result_ascii.truth_value
 
 
 def run_tests():
-  ttf = TestTitleformat_KnownValues()
+  ttf = TestTitleFormatter()
   for t in test_eval_cases:
     ttf.test_eval(*t.values, 0)
     ttf.test_eval(*t.values, 1)
-  for e in encoding_tests.keys():
-    ttf.test_eval_ansi_encoding(e)
-    ttf.test_eval_ascii_encoding(e)
-
 
 if __name__ == '__main__':
   run_tests()
