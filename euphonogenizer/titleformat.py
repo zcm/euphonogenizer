@@ -193,10 +193,14 @@ def magic_map_track_artist(track):
 
 def __find_tracknumber(track):
   value = track.get('TRACKNUMBER')
-  if (value is None or value is False) and 'TRACK' in track:
+  if (value is None or value is False):
+    value = track.get('tracknumber')
+  if (value is None or value is False):
     # This is undocumented behavior. Foobar will fall back to a freeform TRACK
     # field if it's present and TRACKNUMBER is missing.
-    return track.get('TRACK')
+    value = track.get('TRACK')
+  if (value is None or value is False):
+    value = track.get('track')
   return value
 
 
@@ -1991,15 +1995,15 @@ def resolve_var(field, case_sensitive, magic, for_filename):
     if track is None:
       return ('', 0)
 
-    if not case_sensitive:
-      field = field.upper()
-
-    resolved = None
-
-    if not magic:
-      resolved = track.get(field)
-    else:
+    if magic:
       resolved = resolve_magic_var(track, field, case_sensitive)
+    else:
+      resolved = track.get(field)
+
+      if resolved is None and not case_sensitive:
+        resolved = track.get(field.upper())
+        if resolved is None:
+          resolved = track.get(field.lower())
 
     if resolved:
       if for_filename:
@@ -2024,19 +2028,27 @@ def resolve_magic_var(track, field, case_sensitive):
   field_lower = field.lower()
   if field_lower in magic_mappings:
     mapping = magic_mappings[field_lower]
-    if mapping:
-      try:  # First try to call it -- the mapping can be a function.
-        return mapping(track)
-      except TypeError:  # That didn't work. It's a list.
-        for each in mapping:
-          if each in track:
-            return track.get(each)
-          if case_sensitive:
-            each_lower = each.lower()
-            if each_lower in track:
-              return track.get(each_lower)
+    if callable(mapping):
+      return mapping(track)
+    else:
+      for each in mapping:
+        resolved = track.get(each)
+        if resolved is not None:
+          return resolved
+        if not case_sensitive:
+          resolved = track.get(each.upper())
+          if resolved is not None:
+            return resolved
+          resolved = track.get(each.lower())
+          if resolved is not None:
+            return resolved
   # Still couldn't find it.
-  return track.get(field)
+  resolved = track.get(field)
+  if resolved is None:
+    resolved = track.get(field_lower)
+  if resolved is None:
+    resolved = track.get(field.upper())
+  return resolved
 
 
 def compile_fn_call(current_fn, argv):
